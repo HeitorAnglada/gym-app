@@ -20,7 +20,11 @@ npm test                # regras do treino (node:test)
 npm run typecheck
 ```
 
-## Gerar o APK
+## Baixar o APK
+
+Cada push gera o APK automaticamente (GitHub Actions) e publica em **Releases**: as da `main` são as versões normais; as de outras branches saem como pré-release para teste. Baixe o `.apk` no celular e abra para instalar.
+
+## Gerar o APK pelo EAS
 
 ```bash
 npx eas-cli@latest build --platform android --profile preview      # APK para instalar direto
