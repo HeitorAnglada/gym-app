@@ -1,0 +1,93 @@
+name: APK
+
+# Gera o APK do kargo a cada push e publica no GitHub Releases.
+# - main: release "kargo <versão> (build N)"
+# - outras branches: pré-release, para testar antes do merge
+# O APK é assinado com a chave de debug do template: serve para instalar direto
+# no celular. Para a Play Store, o perfil "production" do EAS gera o AAB assinado.
+
+on:
+  push:
+    branches: [main, 'claude/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Testes e tipos
+        run: |
+          npm test
+          npm run typecheck
+
+      - name: Gerar projeto Android
+        run: npx expo prebuild --platform android --no-install
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compilar APK
+        working-directory: android
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Nomear o APK
+        id: apk
+        run: |
+          VERSION=$(node -p "require('./app.json').expo.version")
+          BRANCH=${GITHUB_REF_NAME//\//-}
+          if [ "$GITHUB_REF_NAME" = "main" ]; then
+            TAG="v${VERSION}-build${GITHUB_RUN_NUMBER}"
+            NAME="kargo ${VERSION} (build ${GITHUB_RUN_NUMBER})"
+            PRE=false
+          else
+            TAG="teste-${BRANCH}-build${GITHUB_RUN_NUMBER}"
+            NAME="kargo ${VERSION} teste (${GITHUB_REF_NAME}, build ${GITHUB_RUN_NUMBER})"
+            PRE=true
+          fi
+          FILE="kargo-${VERSION}-build${GITHUB_RUN_NUMBER}.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "$FILE"
+          echo "file=$FILE" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "pre=$PRE" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.file }}
+          path: ${{ steps.apk.outputs.file }}
+
+      - name: Publicar no GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.apk.outputs.tag }}
+          name: ${{ steps.apk.outputs.name }}
+          target_commitish: ${{ github.sha }}
+          prerelease: ${{ steps.apk.outputs.pre }}
+          files: ${{ steps.apk.outputs.file }}
+          body: |
+            APK do kargo gerado a partir de ${{ github.sha }}.
+            Para instalar: baixe o arquivo .apk no celular Android e abra. Se o Android pedir, permita instalar apps desta fonte.
