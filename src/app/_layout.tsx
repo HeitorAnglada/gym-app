@@ -21,13 +21,15 @@ const theme = {
 };
 
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({ Unbounded_300Light, SpaceGrotesk_500Medium, Inter_400Regular, Inter_600SemiBold, Inter_700Bold });
+  const [fontsLoaded, fontError] = useFonts({ Unbounded_300Light, SpaceGrotesk_500Medium, Inter_400Regular, Inter_600SemiBold, Inter_700Bold });
+  // Se uma fonte falhar, o app abre assim mesmo (com a fonte do sistema) em vez de travar na abertura.
+  const ready = fontsLoaded || !!fontError;
 
   useEffect(() => {
-    if (fontsLoaded) SplashScreen.hideAsync();
-  }, [fontsLoaded]);
+    if (ready) SplashScreen.hideAsync();
+  }, [ready]);
 
-  if (!fontsLoaded) return null;
+  if (!ready) return null;
 
   return (
     <ThemeProvider value={theme}>

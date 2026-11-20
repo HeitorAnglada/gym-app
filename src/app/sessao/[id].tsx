@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { deleteSet, deleteWorkout, loadWorkout, setWorkoutNote, updateSet, type SetRow, type WorkoutData, type WorkoutExerciseRow } from '../../db/workout.ts';
 import { dayMonth, WEEKDAY_LONG } from '../../domain/dates.ts';
 import { formatLoad } from '../../domain/editing.ts';
-import { roundToStep } from '../../domain/progression.ts';
+import { addLoad } from '../../domain/progression.ts';
 import { canEditWorkout, editDeadline } from '../../domain/workoutRules.ts';
 import { Field, Input, LinkText, Muted, Sheet, SheetActions, Stepper, s } from '../../ui/components.tsx';
 import { colors, fonts } from '../../ui/theme.ts';
@@ -52,7 +52,7 @@ export default function Sessao() {
           {w.routine_code ?? 'treino'}
           <Text style={{ color: colors.acaiLight }}>.</Text> {dayMonth(d)}
         </Text>
-        <Muted style={{ marginTop: -8, textTransform: 'capitalize' }}>{WEEKDAY_LONG[d.getDay()]}{w.routine_name ? ` · ${w.routine_name}` : ''}</Muted>
+        <Muted style={{ marginTop: -8 }}>{WEEKDAY_LONG[d.getDay()].replace(/^./, (c) => c.toUpperCase())}{w.routine_name ? ` · ${w.routine_name}` : ''}</Muted>
         <SummaryNumbers data={data} third="rest" />
         {editing && <Muted style={{ fontSize: 12 }}>Toque numa série para mudar carga e reps.</Muted>}
         <SummaryList
@@ -89,8 +89,8 @@ export default function Sessao() {
         <Field label="carga (kg)">
           <Stepper
             value={formatLoad(vals.load)}
-            onMinus={() => setVals((v) => ({ ...v, load: Math.max(0, roundToStep(v.load - (setSheet?.e.step_kg ?? 2.5), setSheet?.e.step_kg ?? 2.5)) }))}
-            onPlus={() => setVals((v) => ({ ...v, load: roundToStep(v.load + (setSheet?.e.step_kg ?? 2.5), setSheet?.e.step_kg ?? 2.5) }))}
+            onMinus={() => setVals((v) => ({ ...v, load: addLoad(v.load, -(setSheet?.e.step_kg ?? 2.5)) }))}
+            onPlus={() => setVals((v) => ({ ...v, load: addLoad(v.load, setSheet?.e.step_kg ?? 2.5) }))}
           />
         </Field>
         <Field label="repetições">

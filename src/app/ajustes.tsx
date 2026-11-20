@@ -4,12 +4,13 @@ import { router } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { exportBackup, importBackup } from '../db/index.ts';
 import { DEFAULT_SETTINGS, getSettings, setSetting, type Settings } from '../db/settings.ts';
 import { dayMonth } from '../domain/dates.ts';
+import { allowExactAlarm, clearOngoing, exactAlarmAllowed } from '../ui/alerts.ts';
 import { BigButton, Card, Label, LinkText, Muted, ScreenTitle, Toggle, s } from '../ui/components.tsx';
 import { colors, fonts } from '../ui/theme.ts';
 
@@ -18,9 +19,11 @@ export default function Ajustes() {
   const [pending, setPending] = useState<{ name: string; data: unknown } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [exactAlarm, setExactAlarm] = useState(true);
 
   useEffect(() => {
     getSettings(db).then(setSettings);
+    exactAlarmAllowed().then(setExactAlarm);
   }, [db]);
 
   const change = async <K extends keyof Settings>(key: K, value: Settings[K]) => {
@@ -31,14 +34,19 @@ export default function Ajustes() {
   const HOURS = [2, 3, 4, 6, 0];
 
   async function onExport() {
-    const backup = await exportBackup(db);
-    const day = backup.exportedAt.slice(0, 10);
-    const file = new File(Paths.cache, `kargo-backup-${day}.json`);
-    if (file.exists) file.delete();
-    file.create();
-    await file.write(JSON.stringify(backup));
-    await Sharing.shareAsync(file.uri, { mimeType: 'application/json', dialogTitle: 'Salvar backup do kargo' });
-    await change('lastExportAt', backup.exportedAt);
+    setMessage(null);
+    try {
+      const backup = await exportBackup(db);
+      const day = backup.exportedAt.slice(0, 10);
+      const file = new File(Paths.cache, `kargo-backup-${day}.json`);
+      if (file.exists) file.delete();
+      file.create();
+      await file.write(JSON.stringify(backup));
+      await Sharing.shareAsync(file.uri, { mimeType: 'application/json', dialogTitle: 'Salvar backup do kargo' });
+      await change('lastExportAt', backup.exportedAt);
+    } catch (e) {
+      setMessage(`Não consegui exportar o backup: ${(e as Error).message}`);
+    }
   }
 
   async function onPick() {
@@ -58,6 +66,7 @@ export default function Ajustes() {
     if (!pending) return;
     try {
       await importBackup(db, pending.data);
+      await clearOngoing();
       setMessage('Backup importado. Suas fichas e seu histórico já estão no app.');
       setSettings(await getSettings(db));
     } catch (e) {
@@ -77,6 +86,9 @@ export default function Ajustes() {
         <Toggle label="Manter tela ligada no treino" value={settings.keepAwake} onChange={(v) => change('keepAwake', v)} />
         <Toggle label="Vibrar no fim do descanso" value={settings.vibrate} onChange={(v) => change('vibrate', v)} />
         <Toggle label="Som no fim do descanso" value={settings.sound} onChange={(v) => change('sound', v)} />
+        {Platform.OS === 'android' && !exactAlarm && (
+          <Row title="Aviso do descanso na hora exata" detail="liberar no Android" onPress={async () => setExactAlarm(await allowExactAlarm())} />
+        )}
         <Row
           title="Finalizar treino parado após"
           detail={settings.autoFinishHours ? `${settings.autoFinishHours} h` : 'nunca'}

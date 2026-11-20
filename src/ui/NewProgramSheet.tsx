@@ -16,12 +16,19 @@ export function NewProgramSheet({ visible, onClose }: { visible: boolean; onClos
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  // Cada vez que abre, começa do zero.
+  const [wasVisible, setWasVisible] = useState(visible);
+  if (visible !== wasVisible) {
+    setWasVisible(visible);
+    if (visible) {
+      setName('');
+      setCopyFrom(null);
+      setPicking(false);
+    }
+  }
+
   useEffect(() => {
-    if (!visible) return;
-    setName('');
-    setCopyFrom(null);
-    setPicking(false);
-    listPrograms(db).then(setPrograms);
+    if (visible) listPrograms(db).then(setPrograms);
   }, [visible, db]);
 
   const source = programs.find((p) => p.id === copyFrom);

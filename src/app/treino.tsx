@@ -2,27 +2,29 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 
 import { listSubstitutes } from '../db/editing.ts';
 import { getSettings, type Settings } from '../db/settings.ts';
 import {
-  adjustSets, deleteSet, deleteWorkout, exerciseOutlook, exerciseSessions, finishWorkout, loadWorkout, logSet, setCurrent,
-  setExerciseNote, setExerciseRest, setExerciseStatus, setNextValues, setPhase, swapExercise, updateSet,
+  addSet, changeRest, currentExercise, endSet, goToExercise, moveOn, nextValues, removeSet, setNext, startSet, targetOf, toggleSkip,
+} from '../db/treino.ts';
+import {
+  deleteSet, deleteWorkout, exerciseOutlook, exerciseSessions, finishWorkout, loadWorkout, setExerciseNote, swapExercise, updateSet,
   type ExerciseOutlook, type SetRow, type WorkoutData, type WorkoutExerciseRow,
 } from '../db/workout.ts';
 import { dayMonth } from '../domain/dates.ts';
 import { formatLoad } from '../domain/editing.ts';
-import { roundToStep } from '../domain/progression.ts';
+import { addLoad } from '../domain/progression.ts';
 import { formatClock } from '../domain/rest.ts';
-import { afterSet, describeSets, nextPending, plannedSets, restBetween, valuesForSet } from '../domain/session.ts';
-import { askPermission, buzz, cancelRestEnd, clearOngoing, scheduleRestEnd, setupAlerts, showOngoing } from '../ui/alerts.ts';
+import { afterSet, describeSets, nextPending, plannedSets } from '../domain/session.ts';
+import { askPermission, buzz, cancelRestEnd, clearOngoing, restEndNow, scheduleRestEnd, setupAlerts, showOngoing } from '../ui/alerts.ts';
 import { BigButton, Field, Input, LinkText, Muted, Option, Sheet, SheetActions, Stepper, s } from '../ui/components.tsx';
 import { colors, fonts, radius } from '../ui/theme.ts';
 
-type SheetName = null | 'lista' | 'trocar' | 'menu' | 'nota' | 'descanso' | { set: SetRow };
+type SheetName = null | 'lista' | 'trocar' | 'menu' | 'nota' | 'descanso' | { set: SetRow; step: number };
 
 interface SwapOption {
   exerciseId: string;
@@ -45,23 +47,43 @@ function clockLong(sec: number) {
 export default function Treino() {
   const db = useSQLiteContext();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [data, setData] = useState<WorkoutData | null>(null);
+  /** undefined = carregando; null = não existe mais (apagado/descartado). */
+  const [data, setData] = useState<WorkoutData | null | undefined>(undefined);
   const [outlook, setOutlook] = useState<ExerciseOutlook | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
   const [sheet, setSheet] = useState<SheetName>(null);
   const [swapOptions, setSwapOptions] = useState<SwapOption[]>([]);
   const [noteText, setNoteText] = useState('');
   const [restEdit, setRestEdit] = useState(90);
   const [setEdit, setSetEdit] = useState({ load: 0, reps: 0 });
-  const notified = useRef(true);
+  /** Descanso (início|alvo) que já teve aviso com a tela aberta. */
+  const alerted = useRef<string | null>(null);
   const permission = useRef(false);
+  /** Uma ação por vez: o segundo toque enquanto a primeira grava é ignorado. */
+  const busy = useRef(false);
 
   const reload = useCallback(async () => {
     const d = await loadWorkout(db, id);
     setData(d);
     return d;
   }, [db, id]);
+
+  const act = useCallback(
+    async (fn: () => Promise<unknown>) => {
+      if (busy.current) return;
+      busy.current = true;
+      try {
+        await fn();
+      } catch (e) {
+        Alert.alert('Não consegui salvar', (e as Error).message);
+      } finally {
+        await reload().catch(() => {});
+        busy.current = false;
+      }
+    },
+    [reload],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -79,25 +101,35 @@ export default function Treino() {
 
   // ajustes, avisos, tela ligada
   useEffect(() => {
+    let left = false;
     let keep = false;
     (async () => {
       const st = await getSettings(db);
+      if (left) return;
       setSettings(st);
-      await setupAlerts();
-      permission.current = await askPermission();
+      // Uma falha aqui (tela ligada ou permissão de aviso) não pode impedir a outra.
       if (st.keepAwake) {
         keep = true;
-        await activateKeepAwakeAsync('treino');
+        await activateKeepAwakeAsync('treino').catch(() => {});
+        // saiu da tela enquanto ligava: desliga aqui mesmo
+        if (left) deactivateKeepAwake('treino').catch(() => {});
+      }
+      try {
+        await setupAlerts();
+        permission.current = await askPermission();
+      } catch {
+        permission.current = false;
       }
     })();
     return () => {
-      if (keep) deactivateKeepAwake('treino');
+      left = true;
+      if (keep) deactivateKeepAwake('treino').catch(() => {});
     };
   }, [db]);
 
   const workout = data?.workout;
   const exercises = data?.exercises ?? [];
-  const current = exercises.find((e) => e.id === workout?.current_we_id) ?? exercises.find((e) => e.status === 'pendente') ?? null;
+  const current = data ? currentExercise(data) : null;
 
   // notificação fixa
   useEffect(() => {
@@ -109,135 +141,111 @@ export default function Treino() {
   useEffect(() => {
     if (!current) return;
     let alive = true;
-    exerciseOutlook(
-      db, current.exercise_id,
-      { setsMin: current.sets_min, setsMax: current.sets_max, repsMin: current.reps_min, repsMax: current.reps_max },
-      current.step_kg, current.initial_load, current.workout_id,
-    ).then((o) => alive && setOutlook(o));
+    exerciseOutlook(db, current.exercise_id, targetOf(current), current.step_kg, current.initial_load, current.workout_id).then(
+      (o) => alive && setOutlook(o),
+    );
     return () => {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [db, currentKey]);
 
-  // vibração com o app aberto quando não há permissão de notificação
+  // Aviso do fim do descanso com a tela aberta, na hora certa. O agendado (Android) pode
+  // atrasar sem a permissão de alarme exato; aqui ele é trocado por um aviso imediato.
+  // Só avisa se a tela viu o alvo chegar (até 3 s depois): ao voltar para a tela com o
+  // descanso já passado, o aviso agendado já cuidou disso.
   const restElapsed = workout?.phase === 'descanso' ? elapsed(workout.phase_started_at, now) : 0;
   const restTarget = workout?.rest_target_sec ?? 0;
+  const restKey = workout?.phase === 'descanso' ? `${workout.phase_started_at}|${restTarget}` : null;
+  const nextUpName = current?.name ?? '';
   useEffect(() => {
-    if (workout?.phase !== 'descanso') {
-      notified.current = false;
-      return;
+    if (!restKey || !settings || restTarget <= 0 || restElapsed < restTarget || alerted.current === restKey) return;
+    alerted.current = restKey;
+    if (restElapsed - restTarget > 3 || AppState.currentState !== 'active') return;
+    if (permission.current && (settings.sound || settings.vibrate)) {
+      restEndNow(restTarget, nextUpName, { sound: settings.sound, vibrate: settings.vibrate });
+    } else if (settings.vibrate) {
+      buzz();
     }
-    if (!notified.current && restTarget > 0 && restElapsed >= restTarget) {
-      notified.current = true;
-      if (!permission.current && settings?.vibrate) buzz();
-    }
-  }, [restElapsed, restTarget, workout?.phase, settings?.vibrate]);
+  }, [restKey, restElapsed, restTarget, settings, nextUpName]);
 
-  if (!data || !workout) return <SafeAreaView style={s.screen} />;
+  if (data === undefined) return <SafeAreaView style={s.screen} />;
+  if (!data || !workout) {
+    return (
+      <SafeAreaView style={[s.screen, s.pad]}>
+        <Text style={st.name}>Treino não encontrado<Text style={{ color: colors.acaiLight }}>.</Text></Text>
+        <Muted>Ele foi finalizado ou descartado em outro lugar.</Muted>
+        <BigButton title="Voltar ao início" onPress={() => router.replace('/')} />
+      </SafeAreaView>
+    );
+  }
 
   const total = exercises.length;
   const doneCount = exercises.filter((e) => e.status !== 'pendente').length;
+  // em qual exercício está (o mesmo número no rodapé, na lista e no início)
+  const position = Math.min(doneCount + (current ? 1 : 0), total);
   const following = current ? nextPending(exercises, current.id) : null;
   const planned = current ? plannedSets(current.sets_min, current.sets_max, current.sets_adjust) : { min: 0, max: 0 };
   const done = current?.sets.length ?? 0;
   const outcome = current ? afterSet(done, planned.min, planned.max) : 'completo';
-  const nextLoad = current?.next_load ?? outlook?.prefill.sets[0]?.load ?? 0;
-  const nextReps = current?.next_reps ?? outlook?.prefill.sets[0]?.reps ?? current?.reps_min ?? 8;
+  const { load: nextLoad, reps: nextReps } = current ? nextValues(current, outlook?.prefill) : { load: 0, reps: 8 };
 
   const allSets = exercises.flatMap((e) => e.sets.map((x) => ({ ...x, name: e.name, weId: e.id })));
   const lastLogged = allSets.sort((a, b) => (a.set_ended_at ?? '').localeCompare(b.set_ended_at ?? '')).at(-1) ?? null;
 
   // ---------- ações ----------
 
-  const startSet = async () => {
-    if (!current) return;
-    await cancelRestEnd();
-    await setPhase(db, workout.id, { phase: 'serie', phase_started_at: new Date().toISOString(), current_we_id: current.id });
-    await reload();
-  };
+  const doStartSet = () =>
+    act(async () => {
+      if (await startSet(db, data)) await cancelRestEnd();
+    });
 
   /** Registra a série com a carga e as reps da tela. `approx`: fez sem tocar em "Iniciar série". */
-  const endSet = async (approx = false) => {
-    if (!current) return;
-    const endIso = new Date().toISOString();
-    const startIso = !approx && workout.phase === 'serie' ? workout.phase_started_at : null;
-    const prevEnd = current.sets.at(-1)?.set_ended_at ?? null;
-    const rest = restBetween(prevEnd, startIso ?? endIso);
-    const value = { load: nextLoad, reps: nextReps };
-    await logSet(db, current.id, done, value, startIso, endIso, rest, approx || !startIso);
-    const result = afterSet(done + 1, planned.min, planned.max);
-    let restOwner: WorkoutExerciseRow = current;
-    let nextCurrent: WorkoutExerciseRow | null = current;
-    if (result === 'completo') {
-      await setExerciseStatus(db, current.id, 'feito');
-      nextCurrent = nextPending(exercises, current.id);
-    } else if (outlook) {
-      const v = valuesForSet(outlook.prefill, done + 1, value);
-      await setNextValues(db, current.id, v.load, v.reps);
-    }
-    restOwner = current;
-    if (!nextCurrent) {
-      await setPhase(db, workout.id, { phase: 'fim', phase_started_at: endIso, current_we_id: null, rest_target_sec: null });
-    } else {
-      await setPhase(db, workout.id, { phase: 'descanso', phase_started_at: endIso, current_we_id: nextCurrent.id, rest_target_sec: restOwner.rest_sec });
-      if (settings && (settings.sound || settings.vibrate)) {
-        await scheduleRestEnd(restOwner.rest_sec, restOwner.rest_sec, nextCurrent.name, { sound: settings.sound, vibrate: settings.vibrate });
+  const doEndSet = (approx = false) =>
+    act(async () => {
+      const rest = await endSet(db, data, approx);
+      if (rest && settings && (settings.sound || settings.vibrate)) {
+        await scheduleRestEnd(rest.seconds, rest.seconds, rest.nextName, { sound: settings.sound, vibrate: settings.vibrate });
       }
-    }
-    await reload();
-  };
-
-  const finishCurrentExercise = async () => {
-    if (!current) return;
-    await setExerciseStatus(db, current.id, current.sets.length ? 'feito' : 'pulado');
-    const nxt = nextPending(exercises, current.id);
-    await setPhase(db, workout.id, {
-      phase: nxt ? (workout.phase === 'descanso' ? 'descanso' : 'pronto') : 'fim',
-      phase_started_at: workout.phase === 'descanso' ? workout.phase_started_at : new Date().toISOString(),
-      current_we_id: nxt?.id ?? null,
     });
-    setSheet(null);
-    await reload();
-  };
 
-  const changeValue = async (load: number, reps: number) => {
+  const doMoveOn = () =>
+    act(async () => {
+      setSheet(null);
+      if (!(await moveOn(db, data))) await cancelRestEnd();
+    });
+
+  const changeValue = (load: number, reps: number) => {
     if (!current) return;
-    await setNextValues(db, current.id, Math.max(0, roundToStep(load, current.step_kg)), Math.max(1, reps));
-    await reload();
+    return act(() => setNext(db, current, load, reps));
   };
 
-  const goTo = async (we: WorkoutExerciseRow) => {
+  const goTo = (we: WorkoutExerciseRow) => {
     if (workout.phase === 'serie') {
       Alert.alert('Série em andamento', 'Termine a série (Iniciar descanso) antes de trocar de exercício.');
       return;
     }
-    if (we.status === 'feito') await setExerciseStatus(db, we.id, 'pendente');
-    await setCurrent(db, workout.id, we.id);
-    if (workout.phase === 'fim') await setPhase(db, workout.id, { phase: 'pronto', phase_started_at: null });
     setSheet(null);
-    await reload();
+    return act(() => goToExercise(db, data, we.id));
   };
 
-  const toggleSkip = async (we: WorkoutExerciseRow) => {
-    if (we.status === 'pulado') await setExerciseStatus(db, we.id, 'pendente');
-    else if (we.status === 'pendente') {
-      await setExerciseStatus(db, we.id, 'pulado');
-      if (we.id === current?.id) {
-        const nxt = nextPending(exercises, we.id);
-        await setPhase(db, workout.id, { phase: nxt ? (workout.phase === 'serie' ? 'pronto' : workout.phase) : 'fim', phase_started_at: workout.phase_started_at, current_we_id: nxt?.id ?? null });
-      }
-    }
-    await reload();
-  };
+  const doToggleSkip = (we: WorkoutExerciseRow) => act(() => toggleSkip(db, data, we.id));
 
   const finish = () => {
     const pending = exercises.filter((e) => e.status === 'pendente' && e.sets.length === 0).length;
     const go = async () => {
-      setSheet(null);
-      await finishWorkout(db, workout.id);
-      await clearOngoing();
-      router.replace({ pathname: '/fim/[id]', params: { id: workout.id } });
+      if (busy.current) return;
+      busy.current = true;
+      try {
+        setSheet(null);
+        await finishWorkout(db, workout.id);
+        await clearOngoing();
+        router.replace({ pathname: '/fim/[id]', params: { id: workout.id } });
+      } catch (e) {
+        Alert.alert('Não consegui finalizar', (e as Error).message);
+      } finally {
+        busy.current = false;
+      }
     };
     if (pending === 0) return go();
     Alert.alert('Finalizar treino?', `${pending} ${pending === 1 ? 'exercício ainda não foi feito e vai' : 'exercícios ainda não foram feitos e vão'} como pulado.`, [
@@ -250,6 +258,10 @@ export default function Treino() {
     if (!current) return;
     if (current.sets.length > 0) {
       Alert.alert('Já tem série feita', 'Para trocar, use a lista do treino e adicione o outro exercício como extra.');
+      return;
+    }
+    if (workout.phase === 'serie') {
+      Alert.alert('Série em andamento', 'Termine a série (Iniciar descanso) antes de trocar o exercício.');
       return;
     }
     const opts: SwapOption[] = [];
@@ -270,11 +282,16 @@ export default function Treino() {
     setSheet('trocar');
   };
 
-  const doSwap = async (o: SwapOption) => {
+  const doSwap = (o: SwapOption) => {
     if (!current) return;
-    await swapExercise(db, current, o.exerciseId, o.initialLoad);
     setSheet(null);
-    await reload();
+    return act(() => swapExercise(db, current, o.exerciseId, o.initialLoad));
+  };
+
+  /** Apaga uma série já registrada (o exercício volta a pendente se ficar abaixo do mínimo). */
+  const doDeleteSet = (set: SetRow) => {
+    setSheet(null);
+    return act(() => deleteSet(db, set.id));
   };
 
   // ---------- tela ----------
@@ -307,7 +324,7 @@ export default function Treino() {
             <>
               <Pressable onPress={openSwap}>
                 <Text style={st.name}>
-                  {current.is_priority ? '⭐ ' : ''}{current.name} {current.sets.length === 0 && <Text style={st.swap}>⇄ trocar</Text>}
+                  {current.is_priority ? '⭐ ' : ''}{current.name} {current.sets.length === 0 && <Text style={st.swap}>{'⇄\u00A0trocar'}</Text>}
                 </Text>
               </Pressable>
               <Muted style={{ marginTop: -6 }}>
@@ -339,12 +356,19 @@ export default function Treino() {
                     <View style={st.saved}>
                       <Muted>{sameExercise ? `série ${savedSet.idx + 1}` : `acabou ${savedSet.name}`}</Muted>
                       <Text style={st.savedVal}>{savedSet.load ? `${formatLoad(savedSet.load)} kg ` : ''}× {savedSet.reps}</Text>
-                      <LinkText onPress={() => { setSetEdit({ load: savedSet.load, reps: savedSet.reps }); setSheet({ set: savedSet }); }}>editar</LinkText>
+                      <LinkText
+                        onPress={() => {
+                          setSetEdit({ load: savedSet.load, reps: savedSet.reps });
+                          setSheet({ set: savedSet, step: exercises.find((e) => e.id === savedSet.weId)?.step_kg ?? current.step_kg });
+                        }}
+                      >
+                        editar
+                      </LinkText>
                     </View>
                   )}
                   <View style={st.last}>
                     <Text style={st.lastText}>
-                      série {done + 1} vai com <Text style={st.lastStrong}>{nextLoad ? `${formatLoad(nextLoad)} kg ` : ''}× {nextReps}</Text> · ajuste ao iniciar
+                      série {done + 1} vai com <Text style={st.lastStrong}>{nextLoad ? `${formatLoad(nextLoad)} kg × ${nextReps}` : `${nextReps} reps`}</Text> · ajuste ao iniciar
                     </Text>
                   </View>
                 </>
@@ -354,8 +378,8 @@ export default function Treino() {
                     value={formatLoad(nextLoad)}
                     unit="kg"
                     label={`carga · passo ${formatLoad(current.step_kg)} kg`}
-                    onMinus={() => changeValue(nextLoad - current.step_kg, nextReps)}
-                    onPlus={() => changeValue(nextLoad + current.step_kg, nextReps)}
+                    onMinus={() => changeValue(addLoad(nextLoad, -current.step_kg), nextReps)}
+                    onPlus={() => changeValue(addLoad(nextLoad, current.step_kg), nextReps)}
                   />
                   <BigStepper
                     value={String(nextReps)}
@@ -367,8 +391,10 @@ export default function Treino() {
                   {workout.phase === 'serie' && <Muted style={{ textAlign: 'center' }}>série em andamento · {formatClock(elapsed(workout.phase_started_at, now))}</Muted>}
                 </>
               )}
-              {done >= planned.min && outcome !== 'completo' && workout.phase !== 'serie' && (
-                <LinkText onPress={finishCurrentExercise}>pular série opcional e ir para o próximo</LinkText>
+              {done > 0 && done >= planned.min && workout.phase !== 'serie' && (
+                <LinkText onPress={doMoveOn}>
+                  {outcome === 'completo' ? 'exercício completo · ir para o próximo' : 'pular série opcional e ir para o próximo'}
+                </LinkText>
               )}
             </>
           )}
@@ -376,12 +402,12 @@ export default function Treino() {
 
         {current ? (
           workout.phase === 'serie' ? (
-            <BigButton title="Iniciar descanso" onPress={() => endSet()} />
+            <BigButton title="Iniciar descanso" onPress={() => doEndSet()} />
           ) : (
             <>
-              <BigButton variant={isRest ? 'light' : 'acai'} title="Iniciar série" onPress={startSet} />
+              <BigButton variant={isRest ? 'light' : 'acai'} title="Iniciar série" onPress={doStartSet} />
               {isRest && (
-                <Pressable onPress={() => endSet(true)} hitSlop={6} style={{ alignSelf: 'center' }}>
+                <Pressable onPress={() => doEndSet(true)} hitSlop={6} style={{ alignSelf: 'center' }}>
                   <Muted style={{ fontSize: 12 }}>já fiz a série sem iniciar · registrar</Muted>
                 </Pressable>
               )}
@@ -392,18 +418,18 @@ export default function Treino() {
         )}
         <Pressable onPress={() => setSheet('lista')} style={st.handle} hitSlop={8}>
           <View style={st.handleBar} />
-          <Text style={st.handleText}>{workout.routine_code ?? 'treino'} · {Math.min(doneCount + (current ? 1 : 0), total)} de {total} · ver lista</Text>
+          <Text style={st.handleText}>{workout.routine_code ?? 'treino'} · {position} de {total} · ver lista</Text>
         </Pressable>
       </View>
 
       {/* lista do treino */}
-      <Sheet visible={sheet === 'lista'} onClose={() => setSheet(null)} title={`Treino ${workout.routine_code ?? ''} · ${doneCount} de ${total}`} subtitle="toque para ir · segure para pular">
+      <Sheet visible={sheet === 'lista'} onClose={() => setSheet(null)} title={`Treino ${workout.routine_code ?? ''} · ${position} de ${total}`} subtitle="toque para ir · segure para pular">
         {exercises.map((e) => {
           const p = plannedSets(e.sets_min, e.sets_max, e.sets_adjust);
           const isCur = e.id === current?.id;
-          const detail = e.status === 'pulado' ? 'pulado' : e.status === 'feito' ? `${e.sets.length} séries` : isCur ? `${e.sets.length} de ${p.min}` : `${range(p.min, p.max)} × ${range(e.reps_min, e.reps_max)}`;
+          const detail = e.status === 'pulado' ? 'pulado' : e.status === 'feito' ? `${e.sets.length} séries` : isCur || e.sets.length > 0 ? `${e.sets.length} de ${p.min}` : `${range(p.min, p.max)} × ${range(e.reps_min, e.reps_max)}`;
           return (
-            <Pressable key={e.id} onPress={() => goTo(e)} onLongPress={() => toggleSkip(e)} delayLongPress={350}>
+            <Pressable key={e.id} onPress={() => goTo(e)} onLongPress={() => doToggleSkip(e)} delayLongPress={350}>
               <View style={[st.row, isCur && st.rowCur]}>
                 <View style={[st.status, e.status === 'feito' && st.statusOk, isCur && st.statusCur]}>
                   <Text style={st.statusText}>{e.status === 'feito' ? '✓' : e.status === 'pulado' ? '–' : ''}</Text>
@@ -419,7 +445,14 @@ export default function Treino() {
         <SheetActions
           cancel="+ extra"
           confirm="Finalizar"
-          onCancel={() => { setSheet(null); router.push({ pathname: '/escolher-exercicio', params: { modo: 'extra', treino: workout.id } }); }}
+          onCancel={() => {
+            setSheet(null);
+            if (workout.phase === 'serie') {
+              Alert.alert('Série em andamento', 'Termine a série (Iniciar descanso) antes de adicionar um exercício.');
+              return;
+            }
+            router.push({ pathname: '/escolher-exercicio', params: { modo: 'extra', treino: workout.id } });
+          }}
           onConfirm={finish}
         />
         <Pressable
@@ -453,11 +486,11 @@ export default function Treino() {
       <Sheet visible={sheet === 'menu'} onClose={() => setSheet(null)} title={current?.name ?? ''}>
         {current && (
           <>
-            <Option title="+ adicionar série" onPress={async () => { await adjustSets(db, current.id, 1); if (current.status === 'feito') await setExerciseStatus(db, current.id, 'pendente'); setSheet(null); reload(); }} />
-            <Option title="− remover série" detail={planned.max <= Math.max(1, done) ? 'já fez todas as séries planejadas' : undefined} onPress={async () => { if (planned.max > Math.max(1, done)) await adjustSets(db, current.id, -1); setSheet(null); reload(); }} />
+            <Option title="+ adicionar série" onPress={() => { setSheet(null); act(() => addSet(db, current)); }} />
+            <Option title="− remover série" detail={planned.max <= Math.max(1, done) ? 'já fez todas as séries planejadas' : undefined} onPress={() => { setSheet(null); act(() => removeSet(db, current)); }} />
             <Option title="Observação" detail={current.note ?? undefined} onPress={() => { setNoteText(current.note ?? ''); setSheet('nota'); }} />
             <Option title="Mudar descanso" detail={`agora ${formatClock(current.rest_sec)} · só neste treino`} onPress={() => { setRestEdit(current.rest_sec); setSheet('descanso'); }} />
-            <Option title="Pular exercício" onPress={async () => { setSheet(null); await toggleSkip(current); }} />
+            <Option title="Pular exercício" onPress={() => { setSheet(null); doToggleSkip(current); }} />
             <Option title="Ver histórico do exercício" onPress={() => { setSheet(null); router.push({ pathname: '/exercicio/[id]', params: { id: current.exercise_id } }); }} />
           </>
         )}
@@ -465,7 +498,7 @@ export default function Treino() {
 
       <Sheet visible={sheet === 'nota'} onClose={() => setSheet(null)} title="Observação" subtitle={current?.name}>
         <Input value={noteText} onChangeText={setNoteText} placeholder="ex.: banco no 3, pegada aberta" autoFocus multiline maxLength={200} />
-        <SheetActions confirm="Salvar" onCancel={() => setSheet(null)} onConfirm={async () => { if (current) await setExerciseNote(db, current.id, noteText); setSheet(null); reload(); }} />
+        <SheetActions confirm="Salvar" onCancel={() => setSheet(null)} onConfirm={() => { setSheet(null); if (current) act(() => setExerciseNote(db, current.id, noteText)); }} />
       </Sheet>
 
       <Sheet visible={sheet === 'descanso'} onClose={() => setSheet(null)} title="Descanso" subtitle="só neste treino">
@@ -474,21 +507,26 @@ export default function Treino() {
         <SheetActions
           confirm="Salvar"
           onCancel={() => setSheet(null)}
-          onConfirm={async () => {
-            if (current) await setExerciseRest(db, current.id, restEdit);
-            if (isRest && current && settings && (settings.sound || settings.vibrate)) {
-              await setPhase(db, workout.id, { phase: 'descanso', phase_started_at: workout.phase_started_at, rest_target_sec: restEdit });
-              await scheduleRestEnd(restEdit - restElapsed, restEdit, current.name, { sound: settings.sound, vibrate: settings.vibrate });
-            }
+          onConfirm={() => {
             setSheet(null);
-            reload();
+            if (!current) return;
+            act(async () => {
+              const left = await changeRest(db, data, current, restEdit);
+              if (left != null && settings && (settings.sound || settings.vibrate)) {
+                await scheduleRestEnd(left, restEdit, current.name, { sound: settings.sound, vibrate: settings.vibrate });
+              }
+            });
           }}
         />
       </Sheet>
 
       <Sheet visible={typeof sheet === 'object' && sheet !== null} onClose={() => setSheet(null)} title="Editar série">
         <Field label="carga (kg)">
-          <Stepper value={formatLoad(setEdit.load)} onMinus={() => setSetEdit((v) => ({ ...v, load: Math.max(0, roundToStep(v.load - (current?.step_kg ?? 2.5), current?.step_kg ?? 2.5)) }))} onPlus={() => setSetEdit((v) => ({ ...v, load: roundToStep(v.load + (current?.step_kg ?? 2.5), current?.step_kg ?? 2.5) }))} />
+          <Stepper
+            value={formatLoad(setEdit.load)}
+            onMinus={() => setSetEdit((v) => ({ ...v, load: addLoad(v.load, -(typeof sheet === 'object' && sheet ? sheet.step : 2.5)) }))}
+            onPlus={() => setSetEdit((v) => ({ ...v, load: addLoad(v.load, typeof sheet === 'object' && sheet ? sheet.step : 2.5) }))}
+          />
         </Field>
         <Field label="repetições">
           <Stepper value={String(setEdit.reps)} onMinus={() => setSetEdit((v) => ({ ...v, reps: Math.max(0, v.reps - 1) }))} onPlus={() => setSetEdit((v) => ({ ...v, reps: v.reps + 1 }))} />
@@ -496,8 +534,14 @@ export default function Treino() {
         <SheetActions
           cancel="Apagar série"
           confirm="Salvar"
-          onCancel={async () => { if (typeof sheet === 'object' && sheet) await deleteSet(db, sheet.set.id); setSheet(null); reload(); }}
-          onConfirm={async () => { if (typeof sheet === 'object' && sheet) await updateSet(db, sheet.set.id, setEdit.load, setEdit.reps); setSheet(null); reload(); }}
+          onCancel={() => { if (typeof sheet === 'object' && sheet) doDeleteSet(sheet.set); }}
+          onConfirm={() => {
+            if (typeof sheet === 'object' && sheet) {
+              const setId = sheet.set.id;
+              setSheet(null);
+              act(() => updateSet(db, setId, setEdit.load, setEdit.reps));
+            }
+          }}
         />
       </Sheet>
     </SafeAreaView>

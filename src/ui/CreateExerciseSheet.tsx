@@ -1,5 +1,5 @@
 import { useSQLiteContext } from 'expo-sqlite';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Text } from 'react-native';
 
 import { DEFAULT_STEP, MUSCLE_LABEL, type Equipment, type MuscleGroup } from '../data/catalog.ts';
@@ -27,13 +27,18 @@ export function CreateExerciseSheet({ visible, initialName, onClose, onCreated }
   const [equipment, setEquipment] = useState<Equipment | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    if (!visible) return;
-    const n = initialName.trim();
-    setName(n ? n.charAt(0).toUpperCase() + n.slice(1) : '');
-    setMuscle(null);
-    setEquipment(null);
-  }, [visible, initialName]);
+  // Cada vez que abre, começa do zero, com o nome que estava na busca.
+  const openedWith = visible ? initialName : null;
+  const [lastOpened, setLastOpened] = useState<string | null>(null);
+  if (openedWith !== lastOpened) {
+    setLastOpened(openedWith);
+    if (openedWith !== null) {
+      const n = openedWith.trim();
+      setName(n ? n.charAt(0).toUpperCase() + n.slice(1) : '');
+      setMuscle(null);
+      setEquipment(null);
+    }
+  }
 
   const ready = !!name.trim() && !!muscle && !!equipment && !busy;
 

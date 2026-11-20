@@ -9,7 +9,7 @@ import { defaultRestSeconds } from '../domain/rest.ts';
 import type { ExerciseStatus } from '../domain/session.ts';
 import type { ExerciseSession, SetResult, SlotTarget } from '../domain/types.ts';
 import { AUTO_FINISH_HOURS } from '../domain/workoutRules.ts';
-import { newId, nowIso } from './index.ts';
+import { newId, nowIso, transaction } from './index.ts';
 
 type Db = SQLiteDatabase;
 const alive = 'deleted_at IS NULL';
@@ -161,8 +161,13 @@ export async function exerciseOutlook(db: Db, exerciseId: string, target: SlotTa
 
 // ---------- começar ----------
 
-/** Começa o treino da ficha. No modo "só prioridades" entram só os exercícios com ⭐. */
+/**
+ * Começa o treino da ficha. No modo "só prioridades" entram só os exercícios com ⭐.
+ * Se já existe um treino aberto (ex.: dois toques rápidos em "Começar"), devolve ele em vez de abrir outro.
+ */
 export async function startWorkout(db: Db, routineId: string, priorityOnly: boolean): Promise<string> {
+  const open = await getOpenWorkout(db);
+  if (open) return open.id;
   const routine = await db.getFirstAsync<{ program_id: string }>(`SELECT program_id FROM routine WHERE id = ?`, routineId);
   const slots = await db.getAllAsync<{ id: string; main_exercise_id: string; sets_min: number; sets_max: number; reps_min: number; reps_max: number; rest_sec: number; is_priority: number; initial_load: number | null; step_kg: number }>(
     `SELECT s.id, s.main_exercise_id, s.sets_min, s.sets_max, s.reps_min, s.reps_max, s.rest_sec, s.is_priority, s.initial_load, e.step_kg
@@ -179,7 +184,7 @@ export async function startWorkout(db: Db, routineId: string, priorityOnly: bool
     const o = await exerciseOutlook(db, s.main_exercise_id, target, s.step_kg, s.initial_load);
     rows.push({ id: newId(), s, sort: i, first: o.prefill.sets[0] });
   }
-  await db.withExclusiveTransactionAsync(async (tx) => {
+  await transaction(db, async (tx) => {
     await tx.runAsync(
       `INSERT INTO workout (id, created_at, updated_at, program_id, routine_id, started_at, status, priority_only, current_we_id, phase, last_activity_at)
        VALUES (?, ?, ?, ?, ?, ?, 'aberto', ?, ?, 'pronto', ?)`,
@@ -227,9 +232,33 @@ export async function updateSet(db: Db, setId: string, load: number, reps: numbe
   await db.runAsync(`UPDATE set_log SET load = ?, reps = ?, updated_at = ? WHERE id = ?`, load, reps, nowIso(), setId);
 }
 
+/**
+ * Apaga uma série. As seguintes do mesmo exercício sobem uma posição (série 3 vira 2).
+ * Treino aberto: se o exercício estava feito e ficou abaixo do mínimo, volta a pendente.
+ * Treino do histórico: exercício sem nenhuma série vira pulado.
+ */
 export async function deleteSet(db: Db, setId: string) {
+  const row = await db.getFirstAsync<{ we_id: string; idx: number; w_status: string; we_status: string; min_sets: number }>(
+    `SELECT sl.workout_exercise_id AS we_id, sl.idx, w.status AS w_status, we.status AS we_status,
+       COALESCE(we.sets_min, 3) + we.sets_adjust AS min_sets
+     FROM set_log sl JOIN workout_exercise we ON we.id = sl.workout_exercise_id JOIN workout w ON w.id = we.workout_id
+     WHERE sl.id = ? AND sl.${alive}`,
+    setId,
+  );
+  if (!row) return;
   const now = nowIso();
-  await db.runAsync(`UPDATE set_log SET deleted_at = ?, updated_at = ? WHERE id = ?`, now, now, setId);
+  await transaction(db, async (tx) => {
+    await tx.runAsync(`UPDATE set_log SET deleted_at = ?, updated_at = ? WHERE id = ?`, now, now, setId);
+    await tx.runAsync(
+      `UPDATE set_log SET idx = idx - 1, updated_at = ? WHERE workout_exercise_id = ? AND idx > ? AND ${alive}`,
+      now, row.we_id, row.idx,
+    );
+    const left = (await tx.getFirstAsync<{ n: number }>(`SELECT COUNT(*) AS n FROM set_log WHERE workout_exercise_id = ? AND ${alive}`, row.we_id))?.n ?? 0;
+    let status: ExerciseStatus | null = null;
+    if (row.w_status === 'finalizado' && left === 0) status = 'pulado';
+    else if (row.w_status === 'aberto' && row.we_status === 'feito' && left < Math.max(1, row.min_sets)) status = 'pendente';
+    if (status) await tx.runAsync(`UPDATE workout_exercise SET status = ?, updated_at = ? WHERE id = ?`, status, now, row.we_id);
+  });
 }
 
 export async function setNextValues(db: Db, weId: string, load: number, reps: number) {
@@ -264,7 +293,10 @@ export async function swapExercise(db: Db, we: WorkoutExerciseRow, exerciseId: s
   );
 }
 
-/** Exercício extra, só hoje: entra no fim da lista com 3 × 8–12. */
+/**
+ * Exercício extra, só hoje: entra no fim da lista com 3 × 8–12 e vira o exercício da tela,
+ * a não ser que uma série esteja correndo (ela termina no exercício dela).
+ */
 export async function addExtra(db: Db, workoutId: string, exerciseId: string): Promise<string> {
   const id = newId();
   const now = nowIso();
@@ -278,6 +310,11 @@ export async function addExtra(db: Db, workoutId: string, exerciseId: string): P
      VALUES (?, ?, ?, ?, NULL, ?, ?, 'pendente', 3, 3, 8, 12, ?, ?, ?)`,
     id, now, now, workoutId, exerciseId, (sort?.m ?? -1) + 1, defaultRestSeconds(12), o.prefill.sets[0]?.load ?? null, o.prefill.sets[0]?.reps ?? null,
   );
+  await db.runAsync(
+    `UPDATE workout SET current_we_id = ?, phase = CASE WHEN phase = 'fim' THEN 'pronto' ELSE phase END, last_activity_at = ?, updated_at = ?
+     WHERE id = ? AND phase != 'serie'`,
+    id, now, now, workoutId,
+  );
   return id;
 }
 
@@ -286,7 +323,7 @@ export async function addExtra(db: Db, workoutId: string, exerciseId: string): P
 /** Finaliza: quem tem série vira "feito", quem não tem vira "pulado". */
 export async function finishWorkout(db: Db, workoutId: string, endedAt?: string) {
   const now = nowIso();
-  await db.withExclusiveTransactionAsync(async (tx) => {
+  await transaction(db, async (tx) => {
     await tx.runAsync(
       `UPDATE workout_exercise SET status = CASE
          WHEN EXISTS (SELECT 1 FROM set_log sl WHERE sl.workout_exercise_id = workout_exercise.id AND sl.deleted_at IS NULL) THEN 'feito'
@@ -298,6 +335,11 @@ export async function finishWorkout(db: Db, workoutId: string, endedAt?: string)
       `UPDATE workout SET status = 'finalizado', ended_at = ?, phase = 'fim', phase_started_at = NULL, updated_at = ? WHERE id = ?`,
       endedAt ?? now, now, workoutId,
     );
+    // A ficha escolhida ao usar a pasta já cumpriu o papel: daqui em diante vale a sequência.
+    await tx.runAsync(
+      `UPDATE program SET start_routine_id = NULL, updated_at = ? WHERE start_routine_id IS NOT NULL AND id = (SELECT program_id FROM workout WHERE id = ?)`,
+      now, workoutId,
+    );
   });
 }
 
@@ -308,7 +350,7 @@ export async function setWorkoutNote(db: Db, workoutId: string, note: string) {
 /** Descarta (treino aberto) ou apaga (histórico). Some do histórico e das contas. */
 export async function deleteWorkout(db: Db, workoutId: string) {
   const now = nowIso();
-  await db.withExclusiveTransactionAsync(async (tx) => {
+  await transaction(db, async (tx) => {
     await tx.runAsync(
       `UPDATE set_log SET deleted_at = ?, updated_at = ? WHERE ${alive} AND workout_exercise_id IN (SELECT id FROM workout_exercise WHERE workout_id = ?)`,
       now, now, workoutId,

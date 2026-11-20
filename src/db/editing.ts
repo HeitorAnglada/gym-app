@@ -8,7 +8,8 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { DEFAULT_STEP, type Equipment, type MuscleGroup } from '../data/catalog.ts';
 import { copyName, NEW_SLOT, nextRoutineCode } from '../domain/editing.ts';
 import { defaultRestSeconds } from '../domain/rest.ts';
-import { newId, nowIso } from './index.ts';
+import { newId, nowIso, transaction } from './index.ts';
+import { lastTopLoadSql } from './queries.ts';
 
 type Db = SQLiteDatabase;
 const alive = 'deleted_at IS NULL';
@@ -61,15 +62,6 @@ export interface SubstituteRow {
   last_load: number | null;
 }
 
-/** Maior carga do último treino finalizado do exercício. */
-const lastLoadSql = (exerciseCol: string) => `
-  (SELECT MAX(sl.load) FROM set_log sl
-     JOIN workout_exercise we ON we.id = sl.workout_exercise_id
-     JOIN workout w ON w.id = we.workout_id
-   WHERE we.exercise_id = ${exerciseCol} AND w.status = 'finalizado' AND w.deleted_at IS NULL AND sl.deleted_at IS NULL
-     AND w.started_at = (SELECT MAX(w2.started_at) FROM workout w2 JOIN workout_exercise we2 ON we2.workout_id = w2.id
-                         WHERE we2.exercise_id = ${exerciseCol} AND w2.status = 'finalizado' AND w2.deleted_at IS NULL))`;
-
 export function getRoutine(db: Db, id: string) {
   return db.getFirstAsync<RoutineDetail>(
     `SELECT r.id, r.program_id, p.name AS program_name, r.code, r.name, r.suggested_weekday
@@ -99,7 +91,7 @@ export function listSlots(db: Db, routineId: string) {
 
 export function getSlot(db: Db, id: string) {
   return db.getFirstAsync<SlotDetail>(
-    `SELECT s.*, r.code AS routine_code, e.name AS main_name, ${lastLoadSql('s.main_exercise_id')} AS main_last_load
+    `SELECT s.*, r.code AS routine_code, e.name AS main_name, ${lastTopLoadSql('s.main_exercise_id')} AS main_last_load
      FROM slot s JOIN routine r ON r.id = s.routine_id JOIN exercise e ON e.id = s.main_exercise_id
      WHERE s.id = ? AND s.${alive}`,
     id,
@@ -108,7 +100,7 @@ export function getSlot(db: Db, id: string) {
 
 export function listSubstitutes(db: Db, slotId: string) {
   return db.getAllAsync<SubstituteRow>(
-    `SELECT ss.id, ss.exercise_id, e.name, ss.initial_load, ${lastLoadSql('ss.exercise_id')} AS last_load
+    `SELECT ss.id, ss.exercise_id, e.name, ss.initial_load, ${lastTopLoadSql('ss.exercise_id')} AS last_load
      FROM slot_substitute ss JOIN exercise e ON e.id = ss.exercise_id
      WHERE ss.slot_id = ? AND ss.${alive} ORDER BY ss.sort`,
     slotId,
@@ -138,7 +130,7 @@ async function programNames(db: Db) {
 export async function createProgram(db: Db, name: string, copyFromId: string | null): Promise<string> {
   const id = newId();
   const now = nowIso();
-  await db.withExclusiveTransactionAsync(async (tx) => {
+  await transaction(db, async (tx) => {
     const active = await tx.getFirstAsync<{ n: number }>(`SELECT COUNT(*) AS n FROM program WHERE is_active = 1 AND ${alive}`);
     const sort = await tx.getFirstAsync<{ m: number | null }>(`SELECT MAX(sort) AS m FROM program`);
     await tx.runAsync(
@@ -165,7 +157,7 @@ export async function duplicateProgram(db: Db, id: string): Promise<string> {
 /** Apaga a pasta e as fichas dela. A pasta em uso não pode ser apagada (a tela não oferece). */
 export async function deleteProgram(db: Db, id: string) {
   const now = nowIso();
-  await db.withExclusiveTransactionAsync(async (tx) => {
+  await transaction(db, async (tx) => {
     const routines = await tx.getAllAsync<{ id: string }>(`SELECT id FROM routine WHERE program_id = ? AND ${alive}`, id);
     for (const r of routines) await softDeleteRoutine(tx, r.id, now);
     await tx.runAsync(`UPDATE program SET deleted_at = ?, updated_at = ?, is_active = 0 WHERE id = ?`, now, now, id);
@@ -204,7 +196,7 @@ export async function duplicateRoutine(db: Db, id: string): Promise<string> {
   const code = nextRoutineCode(await routineCodesInProgram(db, r.program_id));
   const sort = await db.getFirstAsync<{ m: number | null }>(`SELECT MAX(sort) AS m FROM routine WHERE program_id = ? AND ${alive}`, r.program_id);
   let newRoutineId = '';
-  await db.withExclusiveTransactionAsync(async (tx) => {
+  await transaction(db, async (tx) => {
     newRoutineId = await copyRoutine(tx, id, r.program_id, code, (sort?.m ?? -1) + 1, nowIso());
   });
   return newRoutineId;
@@ -213,7 +205,7 @@ export async function duplicateRoutine(db: Db, id: string): Promise<string> {
 /** Tira a ficha da sequência. Os treinos feitos com ela continuam no histórico. */
 export async function deleteRoutine(db: Db, id: string) {
   const now = nowIso();
-  await db.withExclusiveTransactionAsync(async (tx) => {
+  await transaction(db, async (tx) => {
     await softDeleteRoutine(tx, id, now);
     await tx.runAsync(`UPDATE program SET start_routine_id = NULL, updated_at = ? WHERE start_routine_id = ?`, now, id);
   });
@@ -257,7 +249,7 @@ export async function setSlotMain(db: Db, slotId: string, exerciseId: string) {
 
 export async function deleteSlot(db: Db, id: string) {
   const now = nowIso();
-  await db.withExclusiveTransactionAsync(async (tx) => {
+  await transaction(db, async (tx) => {
     await tx.runAsync(`UPDATE slot_substitute SET deleted_at = ?, updated_at = ? WHERE slot_id = ? AND ${alive}`, now, now, id);
     await tx.runAsync(`UPDATE slot SET deleted_at = ?, updated_at = ? WHERE id = ?`, now, now, id);
   });
@@ -301,7 +293,7 @@ export async function createExercise(db: Db, name: string, muscle: MuscleGroup, 
 
 async function reorder(db: Db, table: 'routine' | 'slot', orderedIds: string[]) {
   const now = nowIso();
-  await db.withExclusiveTransactionAsync(async (tx) => {
+  await transaction(db, async (tx) => {
     for (const [i, id] of orderedIds.entries()) await tx.runAsync(`UPDATE ${table} SET sort = ?, updated_at = ? WHERE id = ?`, i, now, id);
   });
 }

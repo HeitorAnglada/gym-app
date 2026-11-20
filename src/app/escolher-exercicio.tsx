@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MUSCLE_LABEL, type MuscleGroup } from '../data/catalog.ts';
 import { addSubstitute, createSlot, exerciseIdsInRoutine, getRoutine, getSlot, listSubstitutes, setSlotMain } from '../db/editing.ts';
 import { listExercises, type ExerciseListRow } from '../db/queries.ts';
-import { addExtra, setCurrent, swapExerciseById } from '../db/workout.ts';
+import { addExtra, swapExerciseById } from '../db/workout.ts';
 import { dayMonth } from '../domain/dates.ts';
 import { formatLoad } from '../domain/editing.ts';
 import { AddButton, Chips, Label, LinkText, Muted, s } from '../ui/components.tsx';
@@ -84,8 +84,7 @@ export default function EscolherExercicio() {
         if (!inSlot.has(exerciseId)) await addSubstitute(db, params.slot, exerciseId);
         router.back();
       } else if (mode === 'extra' && params.treino) {
-        const weId = await addExtra(db, params.treino, exerciseId);
-        await setCurrent(db, params.treino, weId);
+        await addExtra(db, params.treino, exerciseId);
         router.back();
       } else if (mode === 'trocar' && params.we) {
         await swapExerciseById(db, params.we, exerciseId);
@@ -120,7 +119,7 @@ export default function EscolherExercicio() {
           {!query && <Chips items={chips} value={filter} onChange={setFilter} label={(c) => (c === 'usados' ? 'Usados' : MUSCLE_LABEL[c])} />}
         </View>
         {!query && !filter && <Muted>Busque pelo nome ou escolha um grupo muscular.</Muted>}
-        {query.trim() !== '' && shown.length === 0 && <Muted>Nada com "{query.trim()}" no catálogo.</Muted>}
+        {query.trim() !== '' && shown.length === 0 && <Muted>Nada com “{query.trim()}” no catálogo.</Muted>}
         {shown.map(([group, rows]) => (
           <View key={group}>
             <Label>{MUSCLE_LABEL[group as MuscleGroup]}</Label>
