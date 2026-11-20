@@ -1,4 +1,4 @@
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -10,6 +10,14 @@ import { Card, EmptyState, Muted, ScreenTitle, s } from '../../ui/components.tsx
 import { colors, fonts } from '../../ui/theme.ts';
 
 const HEAD = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'];
+
+/** Média de treinos por semana no mês (até hoje, no mês atual). */
+function perWeek(count: number, ym: { y: number; m: number }) {
+  const now = new Date();
+  const isCurrent = now.getFullYear() === ym.y && now.getMonth() === ym.m;
+  const days = isCurrent ? now.getDate() : daysInMonth(ym.y, ym.m);
+  return (count / Math.max(1, days / 7)).toFixed(1).replace('.0', '').replace('.', ',');
+}
 
 export default function Historico() {
   const db = useSQLiteContext();
@@ -37,7 +45,7 @@ export default function Historico() {
           <Text style={st.month}>{MONTH_LONG[ym.m]} {ym.y}</Text>
           <Pressable hitSlop={12} onPress={() => shift(1)}><Text style={st.arrow}>›</Text></Pressable>
           <View style={{ flex: 1 }} />
-          <Muted>{rows.length} treinos</Muted>
+          <Muted>{rows.length} {rows.length === 1 ? 'treino' : 'treinos'}{rows.length ? ` · ${perWeek(rows.length, ym)} por semana` : ''}</Muted>
         </View>
         <View style={st.grid}>
           {HEAD.map((h, i) => (
@@ -51,11 +59,11 @@ export default function Historico() {
             const w = rows.find((r) => sameDay(new Date(r.started_at), d));
             const today = sameDay(d, now);
             return (
-              <View key={i} style={st.cell}>
+              <Pressable key={i} style={st.cell} disabled={!w} onPress={() => w && router.push({ pathname: '/sessao/[id]', params: { id: w.id } })}>
                 <View style={[st.box, w && { backgroundColor: colors.acai }, today && { borderWidth: 2, borderColor: colors.lilac }]}>
                   <Text style={[st.cellText, w && { color: colors.white }]}>{w?.code ?? i + 1}</Text>
                 </View>
-              </View>
+              </Pressable>
             );
           })}
         </View>
@@ -65,7 +73,8 @@ export default function Historico() {
           rows.map((w) => {
             const d = new Date(w.started_at);
             return (
-              <Card key={w.id} style={st.item}>
+              <Pressable key={w.id} onPress={() => router.push({ pathname: '/sessao/[id]', params: { id: w.id } })}>
+              <Card style={st.item}>
                 <View style={st.letter}><Text style={st.letterText}>{w.code ?? '–'}</Text></View>
                 <View style={{ flex: 1 }}>
                   <Text style={st.itemTitle}>{WEEKDAY_LONG[d.getDay()]}, {dayMonth(d)}</Text>
@@ -73,7 +82,9 @@ export default function Historico() {
                     {minutes(w) ?? '–'} min · {w.sets} séries{w.skipped ? ` · ${w.skipped} pulado${w.skipped > 1 ? 's' : ''}` : ''}
                   </Muted>
                 </View>
+                <Text style={{ color: colors.grey, fontSize: 18 }}>›</Text>
               </Card>
+              </Pressable>
             );
           })
         )}

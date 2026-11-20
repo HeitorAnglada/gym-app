@@ -9,7 +9,7 @@ App Android de treino de academia: mostra a ficha do dia, anota as cargas e cont
 
 ## Estado
 
-Esta etapa monta a base: projeto Expo, banco local, regras do treino (com testes), catálogo de 108 exercícios, as 4 abas e a importação de backup. A tela de treino (série/descanso, timer, anotação de cargas) vem na próxima etapa.
+A v1 tem: tela de treino (série/descanso, timer que conta pra cima com aviso no alvo, cargas com −/+, troca por substituto, extras, ordem livre, só prioridades), resumo do fim do treino, histórico com calendário e detalhe editável por 7 dias, página de cada exercício (gráfico, recordes, descanso médio), montagem de pastas e fichas pelo app, catálogo de 108 exercícios e backup em JSON.
 
 ## Rodar
 
@@ -40,7 +40,7 @@ npx eas-cli@latest build --platform android --profile production   # AAB para a 
 | Pasta | O que tem |
 | --- | --- |
 | `src/app/` | Telas (Expo Router). `(tabs)/` são as 4 abas. |
-| `src/domain/` | Regras puras e testadas: progressão dupla, estagnação, próxima ficha, descanso, datas. |
+| `src/domain/` | Regras puras e testadas: progressão dupla, estagnação, próxima ficha, descanso, séries do treino, edição de fichas, datas. |
 | `src/db/` | Esquema SQLite com migrações, consultas e backup. |
 | `src/data/` | Catálogo de exercícios e a ficha do Heitor. |
 | `src/ui/` | Cores, fontes, ícones e componentes. |

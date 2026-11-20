@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MUSCLE_LABEL, type MuscleGroup } from '../data/catalog.ts';
 import { addSubstitute, createSlot, exerciseIdsInRoutine, getRoutine, getSlot, listSubstitutes, setSlotMain } from '../db/editing.ts';
 import { listExercises, type ExerciseListRow } from '../db/queries.ts';
+import { addExtra, setCurrent, swapExerciseById } from '../db/workout.ts';
 import { dayMonth } from '../domain/dates.ts';
 import { formatLoad } from '../domain/editing.ts';
 import { AddButton, Chips, Label, LinkText, Muted, s } from '../ui/components.tsx';
@@ -16,15 +17,16 @@ import { colors, fonts } from '../ui/theme.ts';
 /**
  * Escolher exercício, usada por "+ adicionar" (ficha), "+ substituto" e "trocar" o principal.
  * modo=adicionar&ficha=<routine id> · modo=substituto&slot=<slot id> · modo=principal&slot=<slot id>
+ * modo=extra&treino=<workout id> · modo=trocar&we=<workout_exercise id> (só neste treino)
  */
-type Mode = 'adicionar' | 'substituto' | 'principal';
+type Mode = 'adicionar' | 'substituto' | 'principal' | 'extra' | 'trocar';
 type Filter = 'usados' | MuscleGroup;
 const MUSCLES = Object.keys(MUSCLE_LABEL) as MuscleGroup[];
 const fold = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 export default function EscolherExercicio() {
   const db = useSQLiteContext();
-  const params = useLocalSearchParams<{ modo: Mode; ficha?: string; slot?: string }>();
+  const params = useLocalSearchParams<{ modo: Mode; ficha?: string; slot?: string; treino?: string; we?: string }>();
   const mode = params.modo;
   const [all, setAll] = useState<ExerciseListRow[]>([]);
   const [inRoutine, setInRoutine] = useState<Set<string>>(new Set());
@@ -81,6 +83,13 @@ export default function EscolherExercicio() {
       } else if (mode === 'substituto' && params.slot) {
         if (!inSlot.has(exerciseId)) await addSubstitute(db, params.slot, exerciseId);
         router.back();
+      } else if (mode === 'extra' && params.treino) {
+        const weId = await addExtra(db, params.treino, exerciseId);
+        await setCurrent(db, params.treino, weId);
+        router.back();
+      } else if (mode === 'trocar' && params.we) {
+        await swapExerciseById(db, params.we, exerciseId);
+        router.back();
       } else if (mode === 'principal' && params.slot) {
         await setSlotMain(db, params.slot, exerciseId);
         router.back();
@@ -90,14 +99,20 @@ export default function EscolherExercicio() {
     }
   };
 
-  const title = mode === 'adicionar' ? `adicionar à ${code}` : mode === 'substituto' ? 'escolher substituto' : 'trocar principal';
+  const title = {
+    adicionar: `adicionar à ${code}`,
+    substituto: 'escolher substituto',
+    principal: 'trocar principal',
+    extra: 'extra · só hoje',
+    trocar: 'trocar · só hoje',
+  }[mode];
   const chips: Filter[] = ['usados', ...MUSCLES];
 
   return (
     <SafeAreaView style={s.screen}>
       <ScrollView contentContainerStyle={[s.pad, { paddingBottom: 40 }]} keyboardShouldPersistTaps="handled" stickyHeaderIndices={[1]}>
         <View style={st.top}>
-          <LinkText onPress={() => router.back()}>‹ {code || 'voltar'}</LinkText>
+          <LinkText onPress={() => router.back()}>‹ {mode === 'extra' || mode === 'trocar' ? 'treino' : code || 'voltar'}</LinkText>
           <Muted>{title}</Muted>
         </View>
         <View style={{ backgroundColor: colors.bg, gap: 8, paddingBottom: 4 }}>

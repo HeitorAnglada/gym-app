@@ -115,6 +115,19 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE workout_exercise ADD COLUMN reps_max INTEGER;
   ALTER TABLE workout_exercise ADD COLUMN rest_sec INTEGER;
   `,
+  // 3: estado do treino em andamento (para retomar depois de fechar o app)
+  `
+  ALTER TABLE workout ADD COLUMN current_we_id TEXT;
+  ALTER TABLE workout ADD COLUMN phase TEXT NOT NULL DEFAULT 'pronto';
+  ALTER TABLE workout ADD COLUMN phase_started_at TEXT;
+  ALTER TABLE workout ADD COLUMN rest_target_sec INTEGER;
+  ALTER TABLE workout ADD COLUMN last_activity_at TEXT;
+  ALTER TABLE workout_exercise ADD COLUMN sets_adjust INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE workout_exercise ADD COLUMN next_load REAL;
+  ALTER TABLE workout_exercise ADD COLUMN next_reps INTEGER;
+  ALTER TABLE workout_exercise ADD COLUMN initial_load REAL;
+  CREATE INDEX idx_workout_status ON workout(status);
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

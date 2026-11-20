@@ -346,3 +346,43 @@ async function copyRoutine(tx: Db, routineId: string, programId: string, code: s
   }
   return rid;
 }
+
+// ---------- página do exercício ----------
+
+export interface ExerciseDetail {
+  id: string;
+  name: string;
+  muscle_group: MuscleGroup;
+  equipment: Equipment;
+  step_kg: number;
+  builtin_key: string | null;
+}
+
+export function getExercise(db: Db, id: string) {
+  return db.getFirstAsync<ExerciseDetail>(`SELECT id, name, muscle_group, equipment, step_kg, builtin_key FROM exercise WHERE id = ?`, id);
+}
+
+export async function updateExercise(db: Db, id: string, patch: { name: string; muscle_group: MuscleGroup; step_kg: number }) {
+  await db.runAsync(
+    `UPDATE exercise SET name = ?, muscle_group = ?, step_kg = ?, updated_at = ? WHERE id = ?`,
+    patch.name.trim(), patch.muscle_group, patch.step_kg, nowIso(), id,
+  );
+}
+
+/** Onde o exercício aparece na pasta em uso: como principal (com o descanso recomendado) ou substituto. */
+export function exerciseUsage(db: Db, exerciseId: string) {
+  return db.getAllAsync<{ slot_id: string; code: string; rest_sec: number; as_main: number }>(
+    `SELECT s.id AS slot_id, r.code, s.rest_sec, CASE WHEN s.main_exercise_id = ? THEN 1 ELSE 0 END AS as_main
+     FROM slot s JOIN routine r ON r.id = s.routine_id JOIN program p ON p.id = r.program_id
+     WHERE p.is_active = 1 AND p.${alive} AND r.${alive} AND s.${alive}
+       AND (s.main_exercise_id = ? OR EXISTS (SELECT 1 FROM slot_substitute ss WHERE ss.slot_id = s.id AND ss.exercise_id = ? AND ss.${alive}))
+     ORDER BY r.sort, s.sort`,
+    exerciseId, exerciseId, exerciseId,
+  );
+}
+
+/** "ajustar": muda o descanso recomendado das posições da ficha que usam o exercício. */
+export async function setRestForSlots(db: Db, slotIds: string[], seconds: number) {
+  const now = nowIso();
+  for (const id of slotIds) await db.runAsync(`UPDATE slot SET rest_sec = ?, updated_at = ? WHERE id = ?`, seconds, now, id);
+}

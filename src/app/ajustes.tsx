@@ -3,18 +3,32 @@ import { File, Paths } from 'expo-file-system';
 import { router } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { exportBackup, importBackup } from '../db/index.ts';
-import { BigButton, Card, Label, LinkText, Muted, ScreenTitle, s } from '../ui/components.tsx';
+import { DEFAULT_SETTINGS, getSettings, setSetting, type Settings } from '../db/settings.ts';
+import { dayMonth } from '../domain/dates.ts';
+import { BigButton, Card, Label, LinkText, Muted, ScreenTitle, Toggle, s } from '../ui/components.tsx';
 import { colors, fonts } from '../ui/theme.ts';
 
 export default function Ajustes() {
   const db = useSQLiteContext();
   const [pending, setPending] = useState<{ name: string; data: unknown } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+
+  useEffect(() => {
+    getSettings(db).then(setSettings);
+  }, [db]);
+
+  const change = async <K extends keyof Settings>(key: K, value: Settings[K]) => {
+    setSettings((st0) => ({ ...st0, [key]: value }));
+    await setSetting(db, key, value);
+  };
+
+  const HOURS = [2, 3, 4, 6, 0];
 
   async function onExport() {
     const backup = await exportBackup(db);
@@ -24,6 +38,7 @@ export default function Ajustes() {
     file.create();
     await file.write(JSON.stringify(backup));
     await Sharing.shareAsync(file.uri, { mimeType: 'application/json', dialogTitle: 'Salvar backup do kargo' });
+    await change('lastExportAt', backup.exportedAt);
   }
 
   async function onPick() {
@@ -44,6 +59,7 @@ export default function Ajustes() {
     try {
       await importBackup(db, pending.data);
       setMessage('Backup importado. Suas fichas e seu histórico já estão no app.');
+      setSettings(await getSettings(db));
     } catch (e) {
       setMessage((e as Error).message);
     } finally {
@@ -57,8 +73,18 @@ export default function Ajustes() {
         <LinkText onPress={() => router.back()}>‹ início</LinkText>
         <ScreenTitle>ajustes</ScreenTitle>
 
+        <Label>treino</Label>
+        <Toggle label="Manter tela ligada no treino" value={settings.keepAwake} onChange={(v) => change('keepAwake', v)} />
+        <Toggle label="Vibrar no fim do descanso" value={settings.vibrate} onChange={(v) => change('vibrate', v)} />
+        <Toggle label="Som no fim do descanso" value={settings.sound} onChange={(v) => change('sound', v)} />
+        <Row
+          title="Finalizar treino parado após"
+          detail={settings.autoFinishHours ? `${settings.autoFinishHours} h` : 'nunca'}
+          onPress={() => change('autoFinishHours', HOURS[(HOURS.indexOf(settings.autoFinishHours) + 1) % HOURS.length])}
+        />
+
         <Label>dados</Label>
-        <Row title="Exportar backup" detail="salvar no Drive ou mandar pra você" onPress={onExport} />
+        <Row title="Exportar backup" detail={settings.lastExportAt ? `último: ${dayMonth(new Date(settings.lastExportAt))}` : 'salvar no Drive ou mandar pra você'} onPress={onExport} />
         <Row title="Importar backup" detail="troca os dados deste aparelho" onPress={onPick} />
 
         {pending && (

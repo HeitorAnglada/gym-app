@@ -1,4 +1,4 @@
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -70,7 +70,7 @@ export default function Exercicios() {
           <View key={group} style={{ gap: 0 }}>
             <Label>{MUSCLE_LABEL[group as MuscleGroup]}</Label>
             {rows.map((r) => (
-              <View key={r.id} style={st.row}>
+              <Pressable key={r.id} style={st.row} onPress={() => router.push({ pathname: '/exercicio/[id]', params: { id: r.id } })}>
                 <View style={{ flex: 1 }}>
                   <Text style={st.name}>{r.name}</Text>
                   <Muted style={{ fontSize: 12 }}>
@@ -78,7 +78,7 @@ export default function Exercicios() {
                   </Muted>
                 </View>
                 {r.last_top_load != null && <Text style={st.load}>{String(r.last_top_load).replace('.', ',')} kg</Text>}
-              </View>
+              </Pressable>
             ))}
           </View>
         ))}
