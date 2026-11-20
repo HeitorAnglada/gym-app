@@ -9,6 +9,7 @@ import { Platform, Vibration } from 'react-native';
 import { formatClock } from '../domain/rest.ts';
 
 const ONGOING_ID = 'kargo-treino';
+const REST_ID = 'kargo-descanso';
 let configured = false;
 
 const channelFor = (sound: boolean, vibrate: boolean) => `descanso-${sound ? 's' : 'x'}${vibrate ? 'v' : 'x'}`;
@@ -46,25 +47,69 @@ export async function askPermission(): Promise<boolean> {
   return asked.granted;
 }
 
-/** Agenda o aviso de fim do descanso. Cancela o anterior. */
-export async function scheduleRestEnd(afterSeconds: number, targetSec: number, nextName: string, opts: { sound: boolean; vibrate: boolean }) {
+type AlertOpts = { sound: boolean; vibrate: boolean };
+
+function restContent(targetSec: number, nextName: string, opts: AlertOpts): Notifications.NotificationContentInput {
+  return {
+    title: `Descanso de ${formatClock(targetSec)} completo`,
+    body: `Próxima série: ${nextName}`,
+    sound: opts.sound ? 'default' : false,
+    vibrate: opts.vibrate ? [0, 400, 200, 400] : undefined,
+  };
+}
+
+/** Agenda o aviso de fim do descanso (cobre o app fechado ou a tela apagada). Cancela o anterior. */
+export async function scheduleRestEnd(afterSeconds: number, targetSec: number, nextName: string, opts: AlertOpts) {
   await cancelRestEnd();
   if (afterSeconds <= 0) return;
   await Notifications.scheduleNotificationAsync({
-    identifier: 'kargo-descanso',
-    content: {
-      title: `Descanso de ${formatClock(targetSec)} completo`,
-      body: `Próxima série: ${nextName}`,
-      sound: opts.sound ? 'default' : false,
-      vibrate: opts.vibrate ? [0, 400, 200, 400] : undefined,
-    },
+    identifier: REST_ID,
+    content: restContent(targetSec, nextName, opts),
     trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: Math.max(1, Math.round(afterSeconds)), channelId: channelFor(opts.sound, opts.vibrate) },
-  });
+  }).catch(() => {});
+}
+
+/**
+ * Fim do descanso visto com a tela aberta: avisa na hora. No Android, sem a permissão de
+ * alarme exato, o aviso agendado pode chegar bem depois do alvo. Se ele já apareceu, não repete.
+ */
+export async function restEndNow(targetSec: number, nextName: string, opts: AlertOpts) {
+  const shown = await Notifications.getPresentedNotificationsAsync().catch(() => []);
+  if (shown.some((n) => n.request.identifier === REST_ID)) return;
+  await Notifications.cancelScheduledNotificationAsync(REST_ID).catch(() => {});
+  try {
+    await Notifications.scheduleNotificationAsync({
+      identifier: REST_ID,
+      content: restContent(targetSec, nextName, opts),
+      trigger: Platform.OS === 'android' ? { channelId: channelFor(opts.sound, opts.vibrate) } : null,
+    });
+  } catch {
+    if (opts.vibrate) buzz();
+  }
 }
 
 export async function cancelRestEnd() {
-  await Notifications.cancelScheduledNotificationAsync('kargo-descanso').catch(() => {});
-  await Notifications.dismissNotificationAsync('kargo-descanso').catch(() => {});
+  await Notifications.cancelScheduledNotificationAsync(REST_ID).catch(() => {});
+  await Notifications.dismissNotificationAsync(REST_ID).catch(() => {});
+}
+
+/** Android 12+: sem alarme exato liberado, o aviso agendado do descanso pode atrasar. */
+export async function exactAlarmAllowed(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true;
+  try {
+    return (await Notifications.getExactAlarmPermissionsAsync()).granted;
+  } catch {
+    return true;
+  }
+}
+
+/** Abre a tela do Android para liberar o alarme exato. Devolve se ficou liberado. */
+export async function allowExactAlarm(): Promise<boolean> {
+  try {
+    return (await Notifications.requestExactAlarmPermissionsAsync()).granted;
+  } catch {
+    return false;
+  }
 }
 
 /** Notificação fixa enquanto o treino está aberto (tocar volta pro app). */

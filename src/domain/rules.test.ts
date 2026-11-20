@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { hitTopOfRange, isStalled, prefillNext, progressed, roundToStep } from './progression.ts';
+import { daysInMonth, leadingBlanks, startOfWeek } from './dates.ts';
+import { addLoad, hitTopOfRange, isStalled, prefillNext, progressed } from './progression.ts';
 import { averageRest, defaultRestSeconds, formatClock } from './rest.ts';
 import { nextRoutineId } from './sequence.ts';
 import { records, topLoad, volume } from './stats.ts';
@@ -53,9 +54,19 @@ describe('progressão dupla', () => {
     const next = prefillNext(null, remada, 2, 35);
     assert.deepEqual(next.sets[0], { load: 35, reps: 8 });
   });
-  test('arredonda no passo', () => {
-    assert.equal(roundToStep(37.5 + 2.5, 2.5), 40);
-    assert.equal(roundToStep(17.5 + 2.5, 2.5), 20);
+  test('um passo a partir da carga que está ali', () => {
+    assert.equal(addLoad(37.5, 2.5), 40);
+    assert.equal(addLoad(42.5, 5), 47.5); // extensora do Heitor: não pula para 50
+    assert.equal(addLoad(47, -5), 42); // puxada no triângulo: não cai para 40
+    assert.equal(addLoad(17.5, -5), 12.5);
+    assert.equal(addLoad(0.1, 0.2), 0.3);
+    assert.equal(addLoad(2, -5), 0);
+  });
+  test('subir carga fora da grade do passo', () => {
+    const ext: SlotTarget = { setsMin: 3, setsMax: 3, repsMin: 10, repsMax: 12 };
+    const next = prefillNext(s('d', [42.5, 12], [42.5, 12], [42.5, 12]), ext, 5, 42.5);
+    assert.equal(next.increased, true);
+    assert.deepEqual(next.sets[0], { load: 47.5, reps: 10 });
   });
 });
 
@@ -90,6 +101,10 @@ describe('sequência', () => {
     assert.equal(nextRoutineId(ids, 'FB1', 'B'), 'B');
     assert.equal(nextRoutineId([], null), null);
   });
+  test('a escolhida ao usar a pasta vale mesmo com histórico', () => {
+    assert.equal(nextRoutineId(ids, 'A1', 'A2'), 'A2');
+    assert.equal(nextRoutineId(ids, 'A1', 'apagada'), 'B');
+  });
 });
 
 describe('estatísticas', () => {
@@ -114,8 +129,6 @@ describe('regras do treino', () => {
     assert.equal(shouldAutoFinish('2026-11-20T18:00:00.000Z', new Date('2026-11-20T20:00:00.000Z')), false);
   });
 });
-
-import { daysInMonth, leadingBlanks, startOfWeek } from './dates.ts';
 
 describe('datas', () => {
   test('semana começa na segunda', () => {

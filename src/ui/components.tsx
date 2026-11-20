@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, type TextInputProps, type ViewStyle } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, fonts, radius } from './theme.ts';
 
@@ -57,13 +58,18 @@ export function EmptyState({ title, body }: { title: string; body: string }) {
   );
 }
 
-/** Gaveta que sobe de baixo, com o fundo escurecido. Tocar fora fecha. */
+/**
+ * Gaveta que sobe de baixo, com o fundo escurecido. Tocar fora fecha.
+ * No Android (borda a borda) o modal passa por baixo da barra de navegação: o pé da gaveta
+ * ganha a altura dela, para os botões não ficarem embaixo dos botões do sistema.
+ */
 export function Sheet({ visible, onClose, title, subtitle, children }: { visible: boolean; onClose: () => void; title: string; subtitle?: string; children: ReactNode }) {
+  const insets = useSafeAreaInsets();
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <Pressable style={s.veil} onPress={onClose} accessibilityLabel="Fechar" />
-        <View style={s.sheet}>
+        <View style={[s.sheet, { paddingBottom: 24 + insets.bottom }]}>
           <View style={s.handle} />
           <View style={s.sheetHead}>
             <Text style={s.sheetTitle}>{title}</Text>

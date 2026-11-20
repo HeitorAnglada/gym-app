@@ -16,8 +16,9 @@ A v1 tem: tela de treino (série/descanso, timer que conta pra cima com aviso no
 ```bash
 npm install
 npx expo start          # abre no Expo Go ou num development build
-npm test                # regras do treino (node:test)
+npm test                # regras do treino e um treino inteiro com SQLite de verdade (node:test)
 npm run typecheck
+npm run lint
 ```
 
 ## Baixar o APK
@@ -41,7 +42,7 @@ npx eas-cli@latest build --platform android --profile production   # AAB para a 
 | --- | --- |
 | `src/app/` | Telas (Expo Router). `(tabs)/` são as 4 abas. |
 | `src/domain/` | Regras puras e testadas: progressão dupla, estagnação, próxima ficha, descanso, séries do treino, edição de fichas, datas. |
-| `src/db/` | Esquema SQLite com migrações, consultas e backup. |
+| `src/db/` | Esquema SQLite com migrações, consultas, backup e as ações da tela de treino (`treino.ts`). |
 | `src/data/` | Catálogo de exercícios e a ficha do Heitor. |
 | `src/ui/` | Cores, fontes, ícones e componentes. |
 

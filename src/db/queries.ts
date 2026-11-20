@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { nextRoutineId } from '../domain/sequence.ts';
-import { nowIso } from './index.ts';
+import { nowIso, transaction } from './index.ts';
 
 export interface ProgramRow {
   id: string;
@@ -44,6 +44,21 @@ export interface ExerciseListRow {
 
 const alive = 'deleted_at IS NULL';
 
+/**
+ * Maior carga do último treino finalizado em que o exercício teve série.
+ * Treino em que ele foi pulado (ou com as séries apagadas) não conta.
+ */
+export const lastTopLoadSql = (exerciseCol: string) => `
+  (SELECT MAX(lt_sl.load) FROM set_log lt_sl JOIN workout_exercise lt_we ON lt_we.id = lt_sl.workout_exercise_id
+   WHERE lt_we.exercise_id = ${exerciseCol} AND lt_we.deleted_at IS NULL AND lt_sl.deleted_at IS NULL
+     AND lt_we.workout_id = (
+       SELECT lt_w2.id FROM workout lt_w2
+         JOIN workout_exercise lt_we2 ON lt_we2.workout_id = lt_w2.id
+         JOIN set_log lt_sl2 ON lt_sl2.workout_exercise_id = lt_we2.id
+       WHERE lt_we2.exercise_id = ${exerciseCol} AND lt_w2.status = 'finalizado' AND lt_w2.deleted_at IS NULL
+         AND lt_we2.deleted_at IS NULL AND lt_sl2.deleted_at IS NULL
+       ORDER BY lt_w2.started_at DESC LIMIT 1))`;
+
 export function listPrograms(db: SQLiteDatabase) {
   return db.getAllAsync<ProgramRow>(`
     SELECT p.id, p.name, p.is_active, p.start_routine_id,
@@ -67,6 +82,20 @@ export function listRoutines(db: SQLiteDatabase, programId: string) {
     FROM routine r WHERE r.program_id = ? AND r.${alive} ORDER BY r.sort`, programId);
 }
 
+async function lastDoneRoutineId(db: SQLiteDatabase, programId: string): Promise<string | null> {
+  const last = await db.getFirstAsync<{ routine_id: string | null }>(
+    `SELECT routine_id FROM workout WHERE program_id = ? AND status = 'finalizado' AND ${alive} ORDER BY started_at DESC LIMIT 1`,
+    programId,
+  );
+  return last?.routine_id ?? null;
+}
+
+/** A ficha que segue a sequência da pasta pelo histórico (para sugerir ao usar a pasta de novo). */
+export async function sequenceNextRoutineId(db: SQLiteDatabase, programId: string): Promise<string | null> {
+  const routines = await listRoutines(db, programId);
+  return nextRoutineId(routines.map((r) => r.id), await lastDoneRoutineId(db, programId));
+}
+
 /** A ficha que vem agora, pela sequência da pasta em uso. */
 export async function getNextRoutine(db: SQLiteDatabase) {
   const program = await db.getFirstAsync<{ id: string; name: string; start_routine_id: string | null }>(
@@ -74,11 +103,7 @@ export async function getNextRoutine(db: SQLiteDatabase) {
   );
   if (!program) return null;
   const routines = await listRoutines(db, program.id);
-  const last = await db.getFirstAsync<{ routine_id: string; ended_at: string }>(
-    `SELECT routine_id, ended_at FROM workout WHERE program_id = ? AND status = 'finalizado' AND ${alive} ORDER BY started_at DESC LIMIT 1`,
-    program.id,
-  );
-  const id = nextRoutineId(routines.map((r) => r.id), last?.routine_id ?? null, program.start_routine_id);
+  const id = nextRoutineId(routines.map((r) => r.id), await lastDoneRoutineId(db, program.id), program.start_routine_id);
   const routine = routines.find((r) => r.id === id) ?? null;
   const lastOfRoutine = routine
     ? await db.getFirstAsync<{ started_at: string; ended_at: string }>(
@@ -89,10 +114,13 @@ export async function getNextRoutine(db: SQLiteDatabase) {
   return { program, routine, routineCount: routines.length, lastOfRoutine };
 }
 
-/** Pasta em uso: só uma por vez. `startRoutineId` é a ficha escolhida para começar. */
+/**
+ * Pasta em uso: só uma por vez. `startRoutineId` é a ficha escolhida para começar:
+ * ela vem primeiro até um treino da pasta terminar (aí a sequência segue dali).
+ */
 export async function activateProgram(db: SQLiteDatabase, programId: string, startRoutineId: string | null) {
   const now = nowIso();
-  await db.withExclusiveTransactionAsync(async (tx) => {
+  await transaction(db, async (tx) => {
     await tx.runAsync(`UPDATE program SET is_active = 0, updated_at = ? WHERE is_active = 1`, now);
     await tx.runAsync(`UPDATE program SET is_active = 1, start_routine_id = ?, updated_at = ? WHERE id = ?`, startRoutineId, now, programId);
   });
@@ -113,11 +141,7 @@ export function listExercises(db: SQLiteDatabase) {
     SELECT e.id, e.name, e.muscle_group, e.equipment,
       COUNT(DISTINCT w.id) AS times_done,
       MAX(w.started_at) AS last_done,
-      (SELECT MAX(sl.load) FROM set_log sl JOIN workout_exercise we2 ON we2.id = sl.workout_exercise_id
-         JOIN workout w2 ON w2.id = we2.workout_id
-         WHERE we2.exercise_id = e.id AND w2.status = 'finalizado' AND sl.${alive}
-         AND w2.started_at = (SELECT MAX(w3.started_at) FROM workout w3 JOIN workout_exercise we3 ON we3.workout_id = w3.id
-                              WHERE we3.exercise_id = e.id AND w3.status = 'finalizado')) AS last_top_load
+      ${lastTopLoadSql('e.id')} AS last_top_load
     FROM exercise e
     LEFT JOIN workout_exercise we ON we.exercise_id = e.id AND we.status = 'feito' AND we.${alive}
     LEFT JOIN workout w ON w.id = we.workout_id AND w.status = 'finalizado' AND w.${alive}

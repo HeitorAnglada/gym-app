@@ -38,10 +38,11 @@ jobs:
       - name: Instalar dependências
         run: npm ci
 
-      - name: Testes e tipos
+      - name: Testes, tipos e lint
         run: |
           npm test
           npm run typecheck
+          npm run lint
 
       - name: Gerar projeto Android
         run: npx expo prebuild --platform android --no-install

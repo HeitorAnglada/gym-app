@@ -5,7 +5,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createRoutine, deleteProgram, deleteRoutine, duplicateProgram, duplicateRoutine, renameProgram, reorderRoutines } from '../../db/editing.ts';
-import { activateProgram, getNextRoutine, getProgram, listRoutines, type ProgramRow, type RoutineRow } from '../../db/queries.ts';
+import { activateProgram, getNextRoutine, getProgram, listRoutines, sequenceNextRoutineId, type ProgramRow, type RoutineRow } from '../../db/queries.ts';
 import { WEEKDAY_SHORT } from '../../domain/dates.ts';
 import { moveItem } from '../../domain/editing.ts';
 import { BigButton, Card, EmptyState, Fab, Field, Input, LinkText, Muted, Option, Sheet, SheetActions, s } from '../../ui/components.tsx';
@@ -29,7 +29,8 @@ export default function Pasta() {
     setProgram(p);
     const r = await listRoutines(db, id);
     setRoutines(r);
-    setStart(r[0]?.id ?? null);
+    // sugere continuar a sequência de onde parou (ou a primeira, numa pasta nova)
+    setStart((await sequenceNextRoutineId(db, id)) ?? r[0]?.id ?? null);
     setNextId(p?.is_active ? ((await getNextRoutine(db))?.routine?.id ?? null) : null);
   }, [db, id]);
 

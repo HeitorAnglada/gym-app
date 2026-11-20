@@ -33,8 +33,8 @@ export function prefillNext(
     const load = initialLoad ?? 0;
     return { sets: Array.from({ length: count }, () => ({ load, reps: target.repsMin })), increased: false };
   }
-  if (hitTopOfRange(last, target)) {
-    const load = roundToStep(topLoad(last.sets) + step, step);
+  if (step > 0 && hitTopOfRange(last, target)) {
+    const load = addLoad(topLoad(last.sets), step);
     return { sets: Array.from({ length: count }, () => ({ load, reps: target.repsMin })), increased: true };
   }
   const sets = Array.from({ length: count }, (_, i) => {
@@ -64,8 +64,11 @@ export function isStalled(sessions: ExerciseSession[], window = 3): boolean {
   return true;
 }
 
-/** Arredonda para o múltiplo do passo mais próximo, evitando 22.499999. */
-export function roundToStep(value: number, step: number): number {
-  if (step <= 0) return value;
-  return Math.round(Math.round(value / step) * step * 100) / 100;
+/**
+ * Soma (ou tira, com `delta` negativo) um passo à carga, a partir da carga que está ali:
+ * 42,5 + 5 = 47,5 (não pula para 50). Arredonda em 2 casas para não virar 22.499999
+ * e nunca fica abaixo de zero.
+ */
+export function addLoad(load: number, delta: number): number {
+  return Math.max(0, Math.round((load + delta) * 100) / 100);
 }

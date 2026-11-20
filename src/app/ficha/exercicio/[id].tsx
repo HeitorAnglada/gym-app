@@ -158,7 +158,7 @@ export default function ExercicioDaFicha() {
         </Field>
 
         <Toggle label="⭐ Prioridade" value={!!slot.is_priority} onChange={(v) => patch({ is_priority: v ? 1 : 0 })} />
-        <Muted style={{ fontSize: 12 }}>No modo "só prioridades" o treino mostra só os exercícios com ⭐.</Muted>
+        <Muted style={{ fontSize: 12 }}>No modo “só prioridades” o treino mostra só os exercícios com ⭐.</Muted>
 
         <View style={{ paddingTop: 12 }}>
           <LinkText muted onPress={remove}>remover da ficha</LinkText>

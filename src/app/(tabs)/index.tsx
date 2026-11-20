@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -26,8 +26,10 @@ export default function Inicio() {
   const [routines, setRoutines] = useState<RoutineRow[]>([]);
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
+  const starting = useRef(false);
   const [tick, setTick] = useState(0);
-  const today = new Date();
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const today = new Date(nowMs);
   const monday = startOfWeek(today);
 
   useFocusEffect(
@@ -43,6 +45,7 @@ export default function Inicio() {
         const w = await listWorkouts(db, monday.toISOString(), addDays(monday, 7).toISOString());
         const m = await listWorkouts(db, new Date(today.getFullYear(), today.getMonth(), 1).toISOString(), new Date(today.getFullYear(), today.getMonth() + 1, 1).toISOString());
         if (alive) {
+          setNowMs(Date.now());
           setNext(n);
           setOpen(od);
           setRoutines(rs);
@@ -58,13 +61,16 @@ export default function Inicio() {
   );
 
   const start = async (routineId: string, priorityOnly: boolean) => {
-    if (busy) return;
+    // ref, não estado: dois toques no mesmo instante veem o mesmo estado e abririam dois treinos
+    if (starting.current) return;
+    starting.current = true;
     setBusy(true);
     try {
       const id = await startWorkout(db, routineId, priorityOnly);
       setPicking(false);
       router.push({ pathname: '/treino', params: { id } });
     } finally {
+      starting.current = false;
       setBusy(false);
     }
   };
@@ -73,8 +79,8 @@ export default function Inicio() {
   const openDone = open ? open.exercises.filter((e) => e.status !== 'pendente').length : 0;
   const openTotal = open?.exercises.length ?? 0;
   const openCurrent = open?.exercises.find((e) => e.id === ow?.current_we_id);
-  const lastActivity = ow ? Math.round((Date.now() - new Date(ow.last_activity_at ?? ow.started_at).getTime()) / 60000) : 0;
-  const startedMin = ow ? Math.round((Date.now() - new Date(ow.started_at).getTime()) / 60000) : 0;
+  const lastActivity = ow ? Math.round((nowMs - new Date(ow.last_activity_at ?? ow.started_at).getTime()) / 60000) : 0;
+  const startedMin = ow ? Math.round((nowMs - new Date(ow.started_at).getTime()) / 60000) : 0;
   const hhmm = (iso: string) => { const d = new Date(iso); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
@@ -111,7 +117,7 @@ export default function Inicio() {
             esta semana <Text style={st.strong}>{week.length} de {next?.routineCount ?? 0}</Text>
           </Muted>
           <Muted>
-            {MONTH_LONG[today.getMonth()]} <Text style={st.strong}>{monthCount} treinos</Text>
+            {MONTH_LONG[today.getMonth()]} <Text style={st.strong}>{monthCount} {monthCount === 1 ? 'treino' : 'treinos'}</Text>
           </Muted>
         </View>
 
@@ -172,11 +178,19 @@ export default function Inicio() {
             <View style={st.row}>
               <LinkText
                 muted
-                onPress={async () => {
-                  await finishWorkout(db, ow.id);
-                  await clearOngoing();
-                  router.push({ pathname: '/fim/[id]', params: { id: ow.id } });
-                }}
+                onPress={() =>
+                  Alert.alert(`Finalizar o ${ow.routine_code ?? 'treino'} como está?`, 'O que você já fez fica no histórico; o resto vai como pulado.', [
+                    { text: 'Voltar', style: 'cancel' },
+                    {
+                      text: 'Finalizar',
+                      onPress: async () => {
+                        await finishWorkout(db, ow.id);
+                        await clearOngoing();
+                        router.push({ pathname: '/fim/[id]', params: { id: ow.id } });
+                      },
+                    },
+                  ])
+                }
               >
                 finalizar como está
               </LinkText>

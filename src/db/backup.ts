@@ -20,7 +20,7 @@ export function emptyBackup(now: string): Backup {
 
 export function isBackup(value: unknown): value is Backup {
   const v = value as Backup;
-  return !!v && v.format === 'kargo-backup' && typeof v.schemaVersion === 'number' && typeof v.tables === 'object';
+  return !!v && v.format === 'kargo-backup' && typeof v.schemaVersion === 'number' && !!v.tables && typeof v.tables === 'object';
 }
 
 /** Linhas do catálogo que vem com o app. */

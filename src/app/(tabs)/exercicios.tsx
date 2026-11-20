@@ -22,17 +22,15 @@ export default function Exercicios() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter | null>(null);
   const [creating, setCreating] = useState(false);
-  const [reload, setReload] = useState(0);
+  const load = useCallback(() => {
+    listExercises(db).then((rows) => {
+      setAll(rows);
+      // Abre em "Usados" quando já existe algum exercício feito.
+      setFilter((f) => f ?? (rows.some((r) => r.times_done > 0) ? 'usados' : 'peito'));
+    });
+  }, [db]);
 
-  useFocusEffect(
-    useCallback(() => {
-      listExercises(db).then((rows) => {
-        setAll(rows);
-        // Abre em "Usados" quando já existe algum exercício feito.
-        setFilter((f) => f ?? (rows.some((r) => r.times_done > 0) ? 'usados' : 'peito'));
-      });
-    }, [db, reload]),
-  );
+  useFocusEffect(load);
 
   const shown = useMemo(() => {
     const q = fold(query.trim());
@@ -65,7 +63,7 @@ export default function Exercicios() {
             </Pressable>
           ))}
         </ScrollView>
-        {shown.length === 0 && <Muted>Nenhum exercício aqui ainda. Os que você fizer aparecem em "Usados".</Muted>}
+        {shown.length === 0 && <Muted>Nenhum exercício aqui ainda. Os que você fizer aparecem em “Usados”.</Muted>}
         {shown.map(([group, rows]) => (
           <View key={group} style={{ gap: 0 }}>
             <Label>{MUSCLE_LABEL[group as MuscleGroup]}</Label>
@@ -91,7 +89,7 @@ export default function Exercicios() {
         onCreated={() => {
           setCreating(false);
           setQuery('');
-          setReload((n) => n + 1);
+          load();
         }}
       />
     </SafeAreaView>
