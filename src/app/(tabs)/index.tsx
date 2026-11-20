@@ -6,8 +6,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getNextRoutine, listWorkouts, type WorkoutListRow } from '../../db/queries.ts';
 import { addDays, dayMonth, MONTH_LONG, sameDay, startOfWeek, WEEKDAY_LONG, WEEKDAY_SHORT } from '../../domain/dates.ts';
-import { BigButton, Card, EmptyState, Label, LinkText, Muted, s } from '../../ui/components.tsx';
+import { BigButton, Card, Label, LinkText, Muted, s } from '../../ui/components.tsx';
 import { Icon } from '../../ui/icons.tsx';
+import { NewProgramSheet } from '../../ui/NewProgramSheet.tsx';
 import { colors, fonts } from '../../ui/theme.ts';
 
 type Next = Awaited<ReturnType<typeof getNextRoutine>>;
@@ -17,6 +18,7 @@ export default function Inicio() {
   const [next, setNext] = useState<Next>(null);
   const [week, setWeek] = useState<WorkoutListRow[]>([]);
   const [monthCount, setMonthCount] = useState(0);
+  const [creating, setCreating] = useState(false);
   const today = new Date();
   const monday = startOfWeek(today);
 
@@ -99,11 +101,21 @@ export default function Inicio() {
               </View>
             )}
           </Card>
+        ) : next?.program ? (
+          <Card style={{ gap: 10 }}>
+            <Text style={st.welcome}>{next.program.name} ainda não tem fichas.</Text>
+            <Muted>Monte a primeira ficha da pasta para o treino aparecer aqui.</Muted>
+            <BigButton title="Montar ficha" onPress={() => router.push({ pathname: '/pasta/[id]', params: { id: next.program.id } })} />
+          </Card>
         ) : (
-          <EmptyState
-            title="Nenhuma pasta de treino em uso"
-            body="Crie uma pasta na aba Fichas, ou importe um backup em Ajustes para trazer suas fichas prontas."
-          />
+          <Card style={{ gap: 10 }}>
+            <Text style={st.welcome}>Bem-vindo ao kargo.</Text>
+            <Muted>
+              Comece montando a sua ficha: uma pasta de treino com as fichas (A, B, C…), os exercícios e os substitutos. Se você já usa o kargo em outro celular, importe o backup.
+            </Muted>
+            <BigButton title="Montar minha ficha" onPress={() => setCreating(true)} />
+            <BigButton variant="light" title="Importar backup" onPress={() => router.push('/ajustes')} />
+          </Card>
         )}
 
         <View style={{ flex: 1 }} />
@@ -121,6 +133,7 @@ export default function Inicio() {
           </>
         )}
       </ScrollView>
+      <NewProgramSheet visible={creating} onClose={() => setCreating(false)} />
     </SafeAreaView>
   );
 }
@@ -138,4 +151,5 @@ const st = StyleSheet.create({
   strong: { fontFamily: fonts.textSemi, color: colors.text, fontSize: 13 },
   code: { fontFamily: fonts.num, fontSize: 44, letterSpacing: -1.3, color: colors.text },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  welcome: { fontFamily: fonts.num, fontSize: 20, letterSpacing: -0.4, color: colors.text },
 });

@@ -107,6 +107,14 @@ export const MIGRATIONS: string[] = [
   CREATE INDEX idx_wex_exercise ON workout_exercise(exercise_id);
   CREATE INDEX idx_set_wex ON set_log(workout_exercise_id, idx);
   `,
+  // 2: o treino guarda as faixas com que começou, para editar a ficha não mudar um treino aberto
+  `
+  ALTER TABLE workout_exercise ADD COLUMN sets_min INTEGER;
+  ALTER TABLE workout_exercise ADD COLUMN sets_max INTEGER;
+  ALTER TABLE workout_exercise ADD COLUMN reps_min INTEGER;
+  ALTER TABLE workout_exercise ADD COLUMN reps_max INTEGER;
+  ALTER TABLE workout_exercise ADD COLUMN rest_sec INTEGER;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

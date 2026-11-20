@@ -7,7 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MUSCLE_LABEL, type MuscleGroup } from '../../data/catalog.ts';
 import { listExercises, type ExerciseListRow } from '../../db/queries.ts';
 import { dayMonth } from '../../domain/dates.ts';
-import { Label, Muted, ScreenTitle, s } from '../../ui/components.tsx';
+import { Fab, Label, Muted, ScreenTitle, s } from '../../ui/components.tsx';
+import { CreateExerciseSheet } from '../../ui/CreateExerciseSheet.tsx';
 import { colors, fonts } from '../../ui/theme.ts';
 
 type Filter = 'usados' | MuscleGroup;
@@ -20,6 +21,8 @@ export default function Exercicios() {
   const [all, setAll] = useState<ExerciseListRow[]>([]);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [reload, setReload] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -28,7 +31,7 @@ export default function Exercicios() {
         // Abre em "Usados" quando já existe algum exercício feito.
         setFilter((f) => f ?? (rows.some((r) => r.times_done > 0) ? 'usados' : 'peito'));
       });
-    }, [db]),
+    }, [db, reload]),
   );
 
   const shown = useMemo(() => {
@@ -46,7 +49,7 @@ export default function Exercicios() {
 
   return (
     <SafeAreaView style={s.screen} edges={['top']}>
-      <ScrollView contentContainerStyle={s.pad} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[s.pad, { paddingBottom: 90 }]} keyboardShouldPersistTaps="handled">
         <ScreenTitle>exercícios</ScreenTitle>
         <TextInput
           value={query}
@@ -80,6 +83,17 @@ export default function Exercicios() {
           </View>
         ))}
       </ScrollView>
+      <Fab title="+ novo" onPress={() => setCreating(true)} />
+      <CreateExerciseSheet
+        visible={creating}
+        initialName={query}
+        onClose={() => setCreating(false)}
+        onCreated={() => {
+          setCreating(false);
+          setQuery('');
+          setReload((n) => n + 1);
+        }}
+      />
     </SafeAreaView>
   );
 }

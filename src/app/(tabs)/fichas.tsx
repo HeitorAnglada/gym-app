@@ -6,12 +6,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { listPrograms, type ProgramRow } from '../../db/queries.ts';
 import { dayMonth } from '../../domain/dates.ts';
-import { Card, EmptyState, Label, Muted, ScreenTitle, s } from '../../ui/components.tsx';
+import { Card, EmptyState, Fab, Label, Muted, ScreenTitle, s } from '../../ui/components.tsx';
+import { NewProgramSheet } from '../../ui/NewProgramSheet.tsx';
 import { colors, fonts } from '../../ui/theme.ts';
 
 export default function Fichas() {
   const db = useSQLiteContext();
   const [programs, setPrograms] = useState<ProgramRow[]>([]);
+  const [creating, setCreating] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -24,16 +26,18 @@ export default function Fichas() {
 
   return (
     <SafeAreaView style={s.screen} edges={['top']}>
-      <ScrollView contentContainerStyle={s.pad}>
+      <ScrollView contentContainerStyle={[s.pad, { paddingBottom: 90 }]}>
         <ScreenTitle>fichas</ScreenTitle>
         {programs.length === 0 && (
-          <EmptyState title="Nenhuma pasta de treino" body="Uma pasta guarda as fichas de um programa (ex.: A1 → B → A2). Importe um backup em Ajustes para trazer as suas." />
+          <EmptyState title="Nenhuma pasta de treino" body="Uma pasta guarda as fichas de um programa (ex.: A1 → B → A2). Toque em + pasta para montar a sua, ou importe um backup em Ajustes." />
         )}
         {active.length > 0 && <Label>em uso</Label>}
         {active.map((p) => <ProgramCard key={p.id} p={p} />)}
         {others.length > 0 && <Label>outras pastas</Label>}
         {others.map((p) => <ProgramCard key={p.id} p={p} />)}
       </ScrollView>
+      <Fab title="+ pasta" onPress={() => setCreating(true)} />
+      <NewProgramSheet visible={creating} onClose={() => setCreating(false)} />
     </SafeAreaView>
   );
 }
