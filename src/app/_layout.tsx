@@ -6,11 +6,13 @@ import { Unbounded_300Light } from '@expo-google-fonts/unbounded/300Light';
 import { useFonts } from 'expo-font';
 import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { SQLiteProvider } from 'expo-sqlite';
+import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
 import { DATABASE_NAME, initDatabase } from '../db/index.ts';
+import { getSettings } from '../db/settings.ts';
+import { setFontScale } from '../ui/text.tsx';
 import { colors } from '../ui/theme.ts';
 
 SplashScreen.preventAutoHideAsync();
@@ -34,9 +36,19 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={theme}>
       <SQLiteProvider databaseName={DATABASE_NAME} onInit={initDatabase} useSuspense>
+        <FontScaleFromSettings />
         <StatusBar style="light" />
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }} />
       </SQLiteProvider>
     </ThemeProvider>
   );
+}
+
+/** Aplica o tamanho de fonte salvo nos ajustes assim que o banco abre. */
+function FontScaleFromSettings() {
+  const db = useSQLiteContext();
+  useEffect(() => {
+    getSettings(db).then((st) => setFontScale(st.fontScale)).catch(() => {});
+  }, [db]);
+  return null;
 }

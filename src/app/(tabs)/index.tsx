@@ -1,7 +1,7 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getNextRoutine, listRoutines, listWorkouts, type RoutineRow, type WorkoutListRow } from '../../db/queries.ts';
@@ -13,6 +13,7 @@ import { BigButton, Card, Label, LinkText, Muted, Option, Sheet, s } from '../..
 import { Icon } from '../../ui/icons.tsx';
 import { NewProgramSheet } from '../../ui/NewProgramSheet.tsx';
 import { colors, fonts } from '../../ui/theme.ts';
+import { Text } from '../../ui/text.tsx';
 
 type Next = Awaited<ReturnType<typeof getNextRoutine>>;
 

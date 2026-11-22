@@ -1,7 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { loadWorkout, setWorkoutNote, type WorkoutData } from '../../db/workout.ts';
@@ -9,6 +9,7 @@ import { dayMonth, WEEKDAY_LONG } from '../../domain/dates.ts';
 import { BigButton, Input, Label, s } from '../../ui/components.tsx';
 import { colors, fonts } from '../../ui/theme.ts';
 import { SummaryList, SummaryNumbers, useProgressMarks } from '../../ui/WorkoutSummary.tsx';
+import { Text } from '../../ui/text.tsx';
 
 /** Resumo depois de finalizar. O treino já está salvo: o botão só guarda a observação e volta pro Início. */
 export default function Fim() {

@@ -1,7 +1,7 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { deleteSet, deleteWorkout, loadWorkout, setWorkoutNote, updateSet, type SetRow, type WorkoutData, type WorkoutExerciseRow } from '../../db/workout.ts';
@@ -12,6 +12,7 @@ import { canEditWorkout, editDeadline } from '../../domain/workoutRules.ts';
 import { Field, Input, LinkText, Muted, Sheet, SheetActions, Stepper, s } from '../../ui/components.tsx';
 import { colors, fonts } from '../../ui/theme.ts';
 import { SummaryList, SummaryNumbers, useProgressMarks } from '../../ui/WorkoutSummary.tsx';
+import { Text } from '../../ui/text.tsx';
 
 /** Detalhe de um treino do histórico. Editável até 7 dias depois; depois fica travado. */
 export default function Sessao() {

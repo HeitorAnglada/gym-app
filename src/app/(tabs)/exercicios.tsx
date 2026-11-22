@@ -1,7 +1,7 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MUSCLE_LABEL, type MuscleGroup } from '../../data/catalog.ts';
@@ -10,6 +10,7 @@ import { dayMonth } from '../../domain/dates.ts';
 import { Fab, Label, Muted, ScreenTitle, s } from '../../ui/components.tsx';
 import { CreateExerciseSheet } from '../../ui/CreateExerciseSheet.tsx';
 import { colors, fonts } from '../../ui/theme.ts';
+import { Text, TextInput } from '../../ui/text.tsx';
 
 type Filter = 'usados' | MuscleGroup;
 const MUSCLES = Object.keys(MUSCLE_LABEL) as MuscleGroup[];

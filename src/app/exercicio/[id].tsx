@@ -1,7 +1,7 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Polyline, Text as SvgText } from 'react-native-svg';
 
@@ -16,6 +16,7 @@ import { records, topLoad, volume } from '../../domain/stats.ts';
 import { Chips, Field, Input, LinkText, Muted, Sheet, SheetActions, s } from '../../ui/components.tsx';
 import { EQUIPMENT_LABEL } from '../../ui/CreateExerciseSheet.tsx';
 import { colors, fonts } from '../../ui/theme.ts';
+import { Text } from '../../ui/text.tsx';
 
 const MUSCLES = Object.keys(MUSCLE_LABEL) as MuscleGroup[];
 

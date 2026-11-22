@@ -1,7 +1,7 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getRoutine, listSlots, reorderSlots, routineCodesInProgram, updateRoutine, type RoutineDetail, type SlotListRow } from '../../db/editing.ts';
@@ -9,6 +9,7 @@ import { WEEKDAY_SHORT } from '../../domain/dates.ts';
 import { moveItem, routineCodeError } from '../../domain/editing.ts';
 import { AddButton, Chips, Field, Input, LinkText, Muted, s } from '../../ui/components.tsx';
 import { colors, fonts } from '../../ui/theme.ts';
+import { Text } from '../../ui/text.tsx';
 
 const DAYS = [0, 1, 2, 3, 4, 5, 6] as const;
 

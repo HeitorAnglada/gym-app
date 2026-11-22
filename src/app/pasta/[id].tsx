@@ -1,7 +1,7 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createRoutine, deleteProgram, deleteRoutine, duplicateProgram, duplicateRoutine, renameProgram, reorderRoutines } from '../../db/editing.ts';
@@ -10,6 +10,7 @@ import { WEEKDAY_SHORT } from '../../domain/dates.ts';
 import { moveItem } from '../../domain/editing.ts';
 import { BigButton, Card, EmptyState, Fab, Field, Input, LinkText, Muted, Option, Sheet, SheetActions, s } from '../../ui/components.tsx';
 import { colors, fonts } from '../../ui/theme.ts';
+import { Text } from '../../ui/text.tsx';
 
 type SheetName = null | 'usar' | 'menu' | 'renomear' | { routine: RoutineRow };
 
