@@ -4,15 +4,16 @@ import { router } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { exportBackup, importBackup } from '../db/index.ts';
 import { DEFAULT_SETTINGS, getSettings, setSetting, type Settings } from '../db/settings.ts';
 import { dayMonth } from '../domain/dates.ts';
 import { allowExactAlarm, clearOngoing, exactAlarmAllowed } from '../ui/alerts.ts';
-import { BigButton, Card, Label, LinkText, Muted, ScreenTitle, Toggle, s } from '../ui/components.tsx';
+import { BigButton, Card, Chips, Label, LinkText, Muted, ScreenTitle, Toggle, s } from '../ui/components.tsx';
 import { colors, fonts } from '../ui/theme.ts';
+import { FONT_SCALES, Text, setFontScale } from '../ui/text.tsx';
 
 export default function Ajustes() {
   const db = useSQLiteContext();
@@ -81,6 +82,19 @@ export default function Ajustes() {
       <ScrollView contentContainerStyle={s.pad}>
         <LinkText onPress={() => router.back()}>‹ início</LinkText>
         <ScreenTitle>ajustes</ScreenTitle>
+
+        <Label>tela</Label>
+        <Text style={st.title}>Tamanho da fonte</Text>
+        <Chips
+          items={FONT_SCALES.map((f) => f.value)}
+          value={settings.fontScale}
+          label={(v) => FONT_SCALES.find((f) => f.value === v)?.label ?? ''}
+          onChange={(v) => {
+            setFontScale(v);
+            change('fontScale', v);
+          }}
+        />
+        <Muted>Vale para o app inteiro. O tamanho de fonte do Android também conta.</Muted>
 
         <Label>treino</Label>
         <Toggle label="Manter tela ligada no treino" value={settings.keepAwake} onChange={(v) => change('keepAwake', v)} />

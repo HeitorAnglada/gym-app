@@ -9,9 +9,11 @@ export interface Settings {
   /** Horas parado até o treino aberto ser finalizado sozinho. 0 = nunca. */
   autoFinishHours: number;
   lastExportAt: string | null;
+  /** Escala da fonte do app inteiro (0.9, 1, 1.15 ou 1.3). */
+  fontScale: number;
 }
 
-export const DEFAULT_SETTINGS: Settings = { keepAwake: true, vibrate: true, sound: true, autoFinishHours: 3, lastExportAt: null };
+export const DEFAULT_SETTINGS: Settings = { keepAwake: true, vibrate: true, sound: true, autoFinishHours: 3, lastExportAt: null, fontScale: 1 };
 
 export async function getSettings(db: SQLiteDatabase): Promise<Settings> {
   const rows = await db.getAllAsync<{ key: string; value: string }>(`SELECT key, value FROM setting WHERE deleted_at IS NULL`);

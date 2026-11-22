@@ -1,6 +1,6 @@
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { exerciseSessions, type SetRow, type WorkoutData, type WorkoutExerciseRow } from '../db/workout.ts';
 import { hitTopOfRange } from '../domain/progression.ts';
@@ -9,6 +9,7 @@ import { describeSets, thousands, workoutTotals } from '../domain/session.ts';
 import { topLoad } from '../domain/stats.ts';
 import { Muted } from './components.tsx';
 import { colors, fonts } from './theme.ts';
+import { Text } from './text.tsx';
 
 /** O que subiu de carga hoje (⬆) e quantos exercícios ficaram prontos pra subir no próximo. */
 export function useProgressMarks(data: WorkoutData | null) {

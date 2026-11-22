@@ -1,7 +1,7 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { listPrograms, type ProgramRow } from '../../db/queries.ts';
@@ -9,6 +9,7 @@ import { dayMonth } from '../../domain/dates.ts';
 import { Card, EmptyState, Fab, Label, Muted, ScreenTitle, s } from '../../ui/components.tsx';
 import { NewProgramSheet } from '../../ui/NewProgramSheet.tsx';
 import { colors, fonts } from '../../ui/theme.ts';
+import { Text } from '../../ui/text.tsx';
 
 export default function Fichas() {
   const db = useSQLiteContext();

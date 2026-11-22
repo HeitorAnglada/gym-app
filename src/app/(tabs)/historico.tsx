@@ -1,13 +1,14 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { listWorkouts, type WorkoutListRow } from '../../db/queries.ts';
 import { daysInMonth, dayMonth, leadingBlanks, MONTH_LONG, sameDay, WEEKDAY_LONG } from '../../domain/dates.ts';
 import { Card, EmptyState, Muted, ScreenTitle, s } from '../../ui/components.tsx';
 import { colors, fonts } from '../../ui/theme.ts';
+import { Text } from '../../ui/text.tsx';
 
 const HEAD = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'];
 

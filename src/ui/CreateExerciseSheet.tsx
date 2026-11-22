@@ -1,12 +1,12 @@
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { Text } from 'react-native';
 
 import { DEFAULT_STEP, MUSCLE_LABEL, type Equipment, type MuscleGroup } from '../data/catalog.ts';
 import { createExercise } from '../db/editing.ts';
 import { formatLoad } from '../domain/editing.ts';
 import { Chips, Field, Input, Muted, Sheet, SheetActions } from './components.tsx';
 import { colors, fonts } from './theme.ts';
+import { Text } from './text.tsx';
 
 const MUSCLES = Object.keys(MUSCLE_LABEL) as MuscleGroup[];
 const EQUIPMENT: Equipment[] = ['barra', 'halteres', 'maquina', 'polia', 'smith', 'peso_corporal', 'outro'];

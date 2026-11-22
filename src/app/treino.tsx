@@ -2,7 +2,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, AppState, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 
@@ -21,8 +21,9 @@ import { addLoad } from '../domain/progression.ts';
 import { formatClock } from '../domain/rest.ts';
 import { afterSet, describeSets, nextPending, plannedSets } from '../domain/session.ts';
 import { askPermission, buzz, cancelRestEnd, clearOngoing, restEndNow, scheduleRestEnd, setupAlerts, showOngoing } from '../ui/alerts.ts';
-import { BigButton, Field, Input, LinkText, Muted, Option, Sheet, SheetActions, Stepper, s } from '../ui/components.tsx';
+import { BigButton, Field, Input, Label, LinkText, Muted, Option, Sheet, SheetActions, Stepper, s } from '../ui/components.tsx';
 import { colors, fonts, radius } from '../ui/theme.ts';
+import { Text } from '../ui/text.tsx';
 
 type SheetName = null | 'lista' | 'trocar' | 'menu' | 'nota' | 'descanso' | { set: SetRow; step: number };
 
@@ -254,6 +255,39 @@ export default function Treino() {
     ]);
   };
 
+  /** Cancela o treino em andamento: apaga tudo dele (nada fica no histórico). */
+  const cancelWorkout = () => {
+    setSheet(null);
+    const sets = allSets.length;
+    Alert.alert(
+      'Cancelar este treino?',
+      sets > 0
+        ? `${sets} ${sets === 1 ? 'série registrada hoje vai ser apagada' : 'séries registradas hoje vão ser apagadas'}. Nada deste treino fica no histórico.`
+        : 'Nada deste treino fica no histórico.',
+      [
+        { text: 'Voltar', style: 'cancel' },
+        {
+          text: 'Cancelar treino',
+          style: 'destructive',
+          onPress: async () => {
+            if (busy.current) return;
+            busy.current = true;
+            try {
+              await deleteWorkout(db, workout.id);
+              await cancelRestEnd().catch(() => {});
+              await clearOngoing();
+              router.replace('/');
+            } catch (e) {
+              Alert.alert('Não consegui cancelar', (e as Error).message);
+            } finally {
+              busy.current = false;
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const openSwap = async () => {
     if (!current) return;
     if (current.sets.length > 0) {
@@ -309,7 +343,7 @@ export default function Treino() {
             {following ? <>próximo <Text style={st.nextName}>{following.name}</Text></> : 'último exercício'}
           </Text>
           <Text style={st.clock}>{clockLong(elapsed(workout.started_at, now))}</Text>
-          <Pressable hitSlop={12} onPress={() => current && setSheet('menu')} accessibilityLabel="Menu do exercício">
+          <Pressable hitSlop={12} onPress={() => setSheet('menu')} accessibilityLabel="Menu do treino">
             <Text style={st.dots3}>⋯</Text>
           </Pressable>
         </View>
@@ -374,6 +408,7 @@ export default function Treino() {
                 </>
               ) : (
                 <>
+                  {workout.phase === 'serie' && <SetClock sec={elapsed(workout.phase_started_at, now)} />}
                   <BigStepper
                     value={formatLoad(nextLoad)}
                     unit="kg"
@@ -388,7 +423,6 @@ export default function Treino() {
                     onMinus={() => changeValue(nextLoad, nextReps - 1)}
                     onPlus={() => changeValue(nextLoad, nextReps + 1)}
                   />
-                  {workout.phase === 'serie' && <Muted style={{ textAlign: 'center' }}>série em andamento · {formatClock(elapsed(workout.phase_started_at, now))}</Muted>}
                 </>
               )}
               {done > 0 && done >= planned.min && workout.phase !== 'serie' && (
@@ -455,17 +489,8 @@ export default function Treino() {
           }}
           onConfirm={finish}
         />
-        <Pressable
-          onPress={() => {
-            setSheet(null);
-            Alert.alert('Descartar este treino?', 'Nada dele fica no histórico.', [
-              { text: 'Voltar', style: 'cancel' },
-              { text: 'Descartar', style: 'destructive', onPress: async () => { await deleteWorkout(db, workout.id); await clearOngoing(); router.replace('/'); } },
-            ]);
-          }}
-          style={{ alignSelf: 'center', paddingTop: 4 }}
-        >
-          <Muted style={{ fontSize: 12 }}>descartar treino</Muted>
+        <Pressable onPress={cancelWorkout} style={{ alignSelf: 'center', paddingTop: 6 }} hitSlop={10}>
+          <Text style={st.cancelLink}>cancelar treino</Text>
         </Pressable>
       </Sheet>
 
@@ -483,7 +508,7 @@ export default function Treino() {
       </Sheet>
 
       {/* menu ⋯ */}
-      <Sheet visible={sheet === 'menu'} onClose={() => setSheet(null)} title={current?.name ?? ''}>
+      <Sheet visible={sheet === 'menu'} onClose={() => setSheet(null)} title={current?.name ?? `Treino ${workout.routine_code ?? ''}`}>
         {current && (
           <>
             <Option title="+ adicionar série" onPress={() => { setSheet(null); act(() => addSet(db, current)); }} />
@@ -494,6 +519,9 @@ export default function Treino() {
             <Option title="Ver histórico do exercício" onPress={() => { setSheet(null); router.push({ pathname: '/exercicio/[id]', params: { id: current.exercise_id } }); }} />
           </>
         )}
+        <Label>treino</Label>
+        <Option title="Finalizar treino" detail="o que já fez fica no histórico" onPress={() => { setSheet(null); finish(); }} />
+        <Option title="Cancelar treino" detail="apaga este treino, nada fica no histórico" danger onPress={cancelWorkout} />
       </Sheet>
 
       <Sheet visible={sheet === 'nota'} onClose={() => setSheet(null)} title="Observação" subtitle={current?.name}>
@@ -578,6 +606,20 @@ function BigStepper({ value, unit, label, onMinus, onPlus }: { value: string; un
   );
 }
 
+/** Relógio grande da série em andamento: o que mais importa na tela enquanto a série roda. */
+function SetClock({ sec }: { sec: number }) {
+  const blink = sec % 2 === 0;
+  return (
+    <View style={st.setClock} accessibilityLabel={`Série em andamento, ${formatClock(sec)}`}>
+      <View style={st.setClockHead}>
+        <View style={[st.setClockDot, { opacity: blink ? 1 : 0.3 }]} />
+        <Text style={st.setClockLabel}>série em andamento</Text>
+      </View>
+      <Text style={st.setClockVal}>{formatClock(sec)}</Text>
+    </View>
+  );
+}
+
 function RestRing({ elapsedSec, target, over }: { elapsedSec: number; target: number; over: boolean }) {
   const r = 44;
   const c = 2 * Math.PI * r;
@@ -620,6 +662,12 @@ const st = StyleSheet.create({
   bigVal: { fontFamily: fonts.num, fontSize: 40, letterSpacing: -1, color: colors.text, fontVariant: ['tabular-nums'] },
   bigUnit: { fontFamily: fonts.text, fontSize: 14, color: colors.grey, letterSpacing: 0 },
   bigLabel: { fontFamily: fonts.text, fontSize: 11, color: colors.grey },
+  setClock: { alignItems: 'center', backgroundColor: colors.acaiBg, borderColor: colors.acaiLight, borderWidth: 1, borderRadius: radius.lg, paddingVertical: 14, gap: 2 },
+  setClockHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  setClockDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.lilac },
+  setClockLabel: { fontFamily: fonts.textSemi, fontSize: 12, letterSpacing: 1.6, textTransform: 'uppercase', color: colors.lilac },
+  setClockVal: { fontFamily: fonts.num, fontSize: 72, letterSpacing: -2, color: colors.white, fontVariant: ['tabular-nums'] },
+  cancelLink: { fontFamily: fonts.textSemi, fontSize: 13, color: colors.orange },
   ring: { alignSelf: 'center', width: 200, height: 200, alignItems: 'center', justifyContent: 'center' },
   ringText: { position: 'absolute', alignItems: 'center' },
   ringVal: { fontFamily: fonts.num, fontSize: 44, letterSpacing: -1, color: colors.text, fontVariant: ['tabular-nums'] },

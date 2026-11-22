@@ -1,7 +1,7 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MUSCLE_LABEL, type MuscleGroup } from '../data/catalog.ts';
@@ -13,6 +13,7 @@ import { formatLoad } from '../domain/editing.ts';
 import { AddButton, Chips, Label, LinkText, Muted, s } from '../ui/components.tsx';
 import { CreateExerciseSheet } from '../ui/CreateExerciseSheet.tsx';
 import { colors, fonts } from '../ui/theme.ts';
+import { Text, TextInput } from '../ui/text.tsx';
 
 /**
  * Escolher exercício, usada por "+ adicionar" (ficha), "+ substituto" e "trocar" o principal.
