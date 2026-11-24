@@ -9,6 +9,7 @@ import { activateProgram, getNextRoutine, getProgram, listRoutines, sequenceNext
 import { WEEKDAY_SHORT } from '../../domain/dates.ts';
 import { moveItem } from '../../domain/editing.ts';
 import { BigButton, Card, EmptyState, Fab, Field, Input, LinkText, Muted, Option, Sheet, SheetActions, s } from '../../ui/components.tsx';
+import { Icon } from '../../ui/icons.tsx';
 import { colors, fonts } from '../../ui/theme.ts';
 import { Text } from '../../ui/text.tsx';
 
@@ -58,7 +59,7 @@ export default function Pasta() {
 
   const confirmDeleteRoutine = (r: RoutineRow) => {
     setSheet(null);
-    Alert.alert(`Apagar a ficha ${r.code}?`, 'Ela sai da sequência. Os treinos feitos com ela continuam no histórico.', [
+    Alert.alert(`Apagar o treino ${r.code}?`, 'Ele sai da sequência. Os treinos já feitos com ele continuam no histórico.', [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Apagar', style: 'destructive', onPress: async () => { await deleteRoutine(db, r.id); load(); } },
     ]);
@@ -66,7 +67,7 @@ export default function Pasta() {
 
   const confirmDeleteProgram = () => {
     setSheet(null);
-    Alert.alert(`Apagar a pasta ${program.name}?`, 'As fichas dela somem da lista. Os treinos feitos continuam no histórico.', [
+    Alert.alert(`Apagar a ficha ${program.name}?`, 'Os treinos dela somem da lista. O que já foi feito continua no histórico.', [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Apagar', style: 'destructive', onPress: async () => { await deleteProgram(db, program.id); router.back(); } },
     ]);
@@ -78,8 +79,8 @@ export default function Pasta() {
     <SafeAreaView style={s.screen}>
       <ScrollView contentContainerStyle={[s.pad, { flexGrow: 1, paddingBottom: 90 }]}>
         <View style={st.top}>
-          <LinkText onPress={() => router.back()}>‹ pastas</LinkText>
-          <Pressable hitSlop={12} onPress={() => setSheet('menu')} accessibilityLabel="Opções da pasta">
+          <LinkText onPress={() => router.back()}>‹ fichas</LinkText>
+          <Pressable hitSlop={12} onPress={() => setSheet('menu')} accessibilityLabel="Opções da ficha">
             <Text style={st.dots}>⋯</Text>
           </Pressable>
         </View>
@@ -94,7 +95,7 @@ export default function Pasta() {
           </View>
         )}
         {routines.length === 0 && (
-          <EmptyState title="Nenhuma ficha ainda" body="Toque em + ficha para montar a primeira. A ordem das fichas aqui é a sequência do treino." />
+          <EmptyState title="Nenhum treino ainda" body="Toque em + treino para montar o primeiro (A, B, C…). A ordem dos treinos aqui é a sequência." />
         )}
         {routines.map((r, i) => (
           <Pressable key={r.id} onPress={() => !reordering && openRoutine(r)} onLongPress={() => !reordering && setSheet({ routine: r })} delayLongPress={350}>
@@ -105,7 +106,7 @@ export default function Pasta() {
                 <Muted style={{ fontSize: 12 }}>
                   {r.slots} {r.slots === 1 ? 'exercício' : 'exercícios'}{r.priorities ? ` · ${r.priorities} ⭐` : ''}
                   {r.suggested_weekday != null ? ` · ${WEEKDAY_SHORT[r.suggested_weekday]}` : ''}
-                  {r.id === nextId ? ' · próxima' : ''}
+                  {r.id === nextId ? ' · próximo' : ''}
                 </Muted>
               </View>
               {reordering ? (
@@ -114,24 +115,27 @@ export default function Pasta() {
                   <Arrow label="↓" disabled={i === routines.length - 1} onPress={() => move(i, 1)} />
                 </View>
               ) : (
-                <Text style={st.chev}>›</Text>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  <RowButton icon="editar" label={`Editar o treino ${r.code}`} onPress={() => openRoutine(r)} />
+                  <RowButton icon="apagar" label={`Apagar o treino ${r.code}`} onPress={() => confirmDeleteRoutine(r)} />
+                </View>
               )}
             </Card>
           </Pressable>
         ))}
-        {routines.length > 0 && !reordering && <Muted style={{ fontSize: 12 }}>Segure uma ficha para duplicar ou apagar.</Muted>}
+        {routines.length > 0 && !reordering && <Muted style={{ fontSize: 12 }}>Segure um treino para duplicar.</Muted>}
         <View style={{ flex: 1 }} />
-        {!program.is_active && routines.length > 0 && <BigButton title="Usar esta pasta" onPress={() => setSheet('usar')} />}
+        {!program.is_active && routines.length > 0 && <BigButton title="Usar esta ficha" onPress={() => setSheet('usar')} />}
       </ScrollView>
-      {!reordering && <Fab title="+ ficha" onPress={addRoutine} />}
+      {!reordering && <Fab title="+ treino" onPress={addRoutine} />}
 
-      <Sheet visible={sheet === 'usar'} onClose={() => setSheet(null)} title="Usar esta pasta" subtitle="começar por qual ficha?">
+      <Sheet visible={sheet === 'usar'} onClose={() => setSheet(null)} title="Usar esta ficha" subtitle="começar por qual treino?">
         {routines.map((r, i) => (
-          <Option key={r.id} title={`${r.code} · ${r.name || 'sem nome'}`} detail={i === 0 ? 'primeira da sequência' : undefined} selected={start === r.id} onPress={() => setStart(r.id)} />
+          <Option key={r.id} title={`${r.code} · ${r.name || 'sem nome'}`} detail={i === 0 ? 'primeiro da sequência' : undefined} selected={start === r.id} onPress={() => setStart(r.id)} />
         ))}
-        <Muted style={{ fontSize: 12 }}>A pasta em uso agora sai de uso e fica guardada com todo o histórico.</Muted>
+        <Muted style={{ fontSize: 12 }}>A ficha em uso agora sai de uso e fica guardada com todo o histórico.</Muted>
         <SheetActions
-          confirm="Usar pasta"
+          confirm="Usar ficha"
           onCancel={() => setSheet(null)}
           onConfirm={async () => {
             await activateProgram(db, program.id, start);
@@ -144,8 +148,8 @@ export default function Pasta() {
       <Sheet visible={sheet === 'menu'} onClose={() => setSheet(null)} title={program.name}>
         <Option title="Renomear" onPress={() => { setNewName(program.name); setSheet('renomear'); }} />
         <Option
-          title="Duplicar pasta"
-          detail="copia as fichas, os exercícios e os substitutos"
+          title="Duplicar ficha"
+          detail="copia os treinos, os exercícios e os substitutos"
           onPress={async () => {
             setSheet(null);
             const nid = await duplicateProgram(db, program.id);
@@ -153,13 +157,13 @@ export default function Pasta() {
           }}
         />
         {program.is_active ? (
-          <Option title="Apagar pasta" detail="a pasta em uso não pode ser apagada; use outra antes" />
+          <Option title="Apagar ficha" detail="a ficha em uso não pode ser apagada; use outra antes" />
         ) : (
-          <Option title="Apagar pasta" danger detail="os treinos feitos continuam no histórico" onPress={confirmDeleteProgram} />
+          <Option title="Apagar ficha" danger detail="os treinos feitos continuam no histórico" onPress={confirmDeleteProgram} />
         )}
       </Sheet>
 
-      <Sheet visible={sheet === 'renomear'} onClose={() => setSheet(null)} title="Renomear pasta">
+      <Sheet visible={sheet === 'renomear'} onClose={() => setSheet(null)} title="Renomear ficha">
         <Field label="nome">
           <Input value={newName} onChangeText={setNewName} autoFocus maxLength={40} />
         </Field>
@@ -193,11 +197,19 @@ export default function Pasta() {
                 load();
               }}
             />
-            <Option title="Apagar" danger detail="sai da sequência; os treinos feitos com ela continuam no histórico" onPress={() => confirmDeleteRoutine(routineSheet)} />
+            <Option title="Apagar" danger detail="sai da sequência; o que já foi feito com ele continua no histórico" onPress={() => confirmDeleteRoutine(routineSheet)} />
           </>
         )}
       </Sheet>
     </SafeAreaView>
+  );
+}
+
+function RowButton({ icon, label, onPress }: { icon: 'editar' | 'apagar'; label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={4} accessibilityLabel={label} style={st.arrow}>
+      <Icon name={icon} color={icon === 'apagar' ? colors.grey : colors.lilac} size={18} />
+    </Pressable>
   );
 }
 
@@ -218,7 +230,6 @@ const st = StyleSheet.create({
   letter: { width: 44, height: 44, borderRadius: 12, backgroundColor: colors.acaiBg, alignItems: 'center', justifyContent: 'center' },
   letterText: { fontFamily: fonts.num, fontSize: 16, color: colors.lilac },
   name: { fontFamily: fonts.textSemi, fontSize: 14, color: colors.text },
-  chev: { color: colors.grey, fontSize: 18 },
   arrow: { width: 36, height: 36, borderRadius: 10, backgroundColor: colors.card2, alignItems: 'center', justifyContent: 'center' },
   arrowText: { color: colors.lilac, fontSize: 16, fontFamily: fonts.textSemi },
 });

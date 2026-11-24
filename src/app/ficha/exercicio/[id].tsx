@@ -49,9 +49,10 @@ export default function ExercicioDaFicha() {
     await updateSlot(db, slot.id, p);
   };
 
-  const setSets = (end: 'min' | 'max', v: number) => {
-    const r = setRangeEnd({ min: slot.sets_min, max: slot.sets_max }, end, v, 1, 10);
-    patch({ sets_min: r.min, sets_max: r.max });
+  /** Uma quantidade só de séries (sem faixa): mínimo e máximo andam juntos. */
+  const setSets = (v: number) => {
+    const n = Math.min(10, Math.max(1, Math.round(v)));
+    patch({ sets_min: n, sets_max: n });
   };
 
   /** Mexer nas reps leva o descanso junto enquanto ele ainda é o sugerido pela faixa. */
@@ -82,7 +83,7 @@ export default function ExercicioDaFicha() {
   };
 
   const remove = () =>
-    Alert.alert(`Tirar ${slot.main_name} da ${slot.routine_code}?`, 'Os treinos já feitos com ele continuam no histórico.', [
+    Alert.alert(`Tirar ${slot.main_name} do ${slot.routine_code}?`, 'Os treinos já feitos com ele continuam no histórico.', [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Remover', style: 'destructive', onPress: async () => { await deleteSlot(db, slot.id); router.back(); } },
     ]);
@@ -99,7 +100,7 @@ export default function ExercicioDaFicha() {
             {slot.main_name}
             <Text style={{ color: colors.acaiLight }}>.</Text>
           </Text>
-          <Muted style={{ fontSize: 12 }}>{position}º exercício da {slot.routine_code}</Muted>
+          <Muted style={{ fontSize: 12 }}>{position}º exercício do {slot.routine_code}</Muted>
         </View>
 
         <Field label="exercício principal">
@@ -132,11 +133,7 @@ export default function ExercicioDaFicha() {
         </Field>
 
         <Field label="séries">
-          <View style={st.rangeRow}>
-            <View style={{ flex: 1 }}><Stepper value={String(slot.sets_min)} onMinus={() => setSets('min', slot.sets_min - 1)} onPlus={() => setSets('min', slot.sets_min + 1)} /></View>
-            <Text style={st.a}>a</Text>
-            <View style={{ flex: 1 }}><Stepper value={String(slot.sets_max)} onMinus={() => setSets('max', slot.sets_max - 1)} onPlus={() => setSets('max', slot.sets_max + 1)} /></View>
-          </View>
+          <Stepper value={String(slot.sets_max)} onMinus={() => setSets(slot.sets_max - 1)} onPlus={() => setSets(slot.sets_max + 1)} />
         </Field>
         <Field label="repetições">
           <View style={st.rangeRow}>
@@ -162,7 +159,7 @@ export default function ExercicioDaFicha() {
         <Muted style={{ fontSize: 12 }}>No modo “só prioridades” o treino mostra só os exercícios com ⭐.</Muted>
 
         <View style={{ paddingTop: 12 }}>
-          <LinkText muted onPress={remove}>remover da ficha</LinkText>
+          <LinkText muted onPress={remove}>remover do treino</LinkText>
         </View>
       </ScrollView>
 

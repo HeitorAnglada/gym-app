@@ -531,7 +531,7 @@ export default function Treino() {
 
       <Sheet visible={sheet === 'descanso'} onClose={() => setSheet(null)} title="Descanso" subtitle="só neste treino">
         <Stepper value={formatClock(restEdit)} onMinus={() => setRestEdit((v) => Math.max(15, v - 15))} onPlus={() => setRestEdit((v) => Math.min(600, v + 15))} />
-        <Muted style={{ fontSize: 12 }}>Para mudar de vez, ajuste na ficha ou na página do exercício.</Muted>
+        <Muted style={{ fontSize: 12 }}>Para mudar de vez, ajuste no treino da ficha ou na página do exercício.</Muted>
         <SheetActions
           confirm="Salvar"
           onCancel={() => setSheet(null)}

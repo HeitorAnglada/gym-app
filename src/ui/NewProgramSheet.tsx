@@ -7,7 +7,7 @@ import { copyName } from '../domain/editing.ts';
 import { listPrograms, type ProgramRow } from '../db/queries.ts';
 import { Field, Input, Option, Sheet, SheetActions } from './components.tsx';
 
-/** Gaveta "Nova pasta": nome + em branco ou copiando outra pasta. Ao criar, abre a pasta. */
+/** Gaveta "Nova ficha" (program no código): nome + em branco ou copiando outra. Ao criar, abre a ficha. */
 export function NewProgramSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const db = useSQLiteContext();
   const [name, setName] = useState('');
@@ -45,15 +45,15 @@ export function NewProgramSheet({ visible, onClose }: { visible: boolean; onClos
   };
 
   return (
-    <Sheet visible={visible} onClose={onClose} title="Nova pasta">
+    <Sheet visible={visible} onClose={onClose} title="Nova ficha">
       <Field label="nome">
         <Input value={name} onChangeText={setName} placeholder="ex.: Hipertrofia ABC" autoFocus maxLength={40} />
       </Field>
-      <Option title="Em branco" detail="você cria as fichas depois" selected={!copyFrom && !picking} onPress={() => { setCopyFrom(null); setPicking(false); }} />
+      <Option title="Em branco" detail="você cria os treinos depois" selected={!copyFrom && !picking} onPress={() => { setCopyFrom(null); setPicking(false); }} />
       {programs.length > 0 && (
         <Option
-          title="Copiar de uma pasta"
-          detail={source ? `${source.name} · fichas, exercícios e substitutos` : 'fichas, exercícios e substitutos'}
+          title="Copiar de uma ficha"
+          detail={source ? `${source.name} · treinos, exercícios e substitutos` : 'treinos, exercícios e substitutos'}
           selected={!!copyFrom || picking}
           onPress={() => setPicking(true)}
         />
@@ -63,7 +63,7 @@ export function NewProgramSheet({ visible, onClose }: { visible: boolean; onClos
           <Option
             key={p.id}
             title={`   ${p.name}`}
-            detail={`   ${p.routine_codes ?? 'sem fichas'}`}
+            detail={`   ${p.routine_codes ?? 'sem treinos'}`}
             selected={copyFrom === p.id}
             onPress={() => { setCopyFrom(p.id); setPicking(false); if (!name.trim()) setName(copyName(p.name, programs.map((x) => x.name))); }}
           />

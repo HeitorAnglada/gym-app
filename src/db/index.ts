@@ -2,7 +2,7 @@ import * as Crypto from 'expo-crypto';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { catalogRows, isBackup, type Backup, type Row } from './backup.ts';
-import { MIGRATIONS, SCHEMA_VERSION, TABLES } from './schema.ts';
+import { MIGRATIONS, SCHEMA_VERSION, SINGLE_SET_COUNT_SQL, TABLES } from './schema.ts';
 
 export const DATABASE_NAME = 'kargo.db';
 
@@ -74,6 +74,8 @@ export async function importBackup(db: SQLiteDatabase, data: unknown): Promise<v
     await transaction(db, async (tx) => {
       for (const t of [...TABLES].reverse()) await tx.execAsync(`DELETE FROM ${t}`);
       for (const t of TABLES) await insertRows(tx, t, data.tables[t] ?? []);
+      // backup de antes da série única ainda traz faixas ("3 a 4")
+      await tx.execAsync(SINGLE_SET_COUNT_SQL);
     });
   } finally {
     await db.execAsync('PRAGMA foreign_keys = ON;');

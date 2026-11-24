@@ -136,7 +136,17 @@ export default function Inicio() {
           </Card>
         ) : routine ? (
           <Card>
-            <Label>próximo</Label>
+            <View style={st.row}>
+              <Label>próximo</Label>
+              <Pressable
+                hitSlop={12}
+                accessibilityLabel={`Editar o treino ${routine.code}`}
+                onPress={() => router.push({ pathname: '/ficha/[id]', params: { id: routine.id } })}
+                style={st.edit}
+              >
+                <Icon name="editar" color={colors.lilac} size={18} />
+              </Pressable>
+            </View>
             <Text style={st.code}>
               {routine.code}
               <Text style={{ color: colors.acaiLight }}>.</Text>
@@ -157,15 +167,15 @@ export default function Inicio() {
           </Card>
         ) : next?.program ? (
           <Card style={{ gap: 10 }}>
-            <Text style={st.welcome}>{next.program.name} ainda não tem fichas.</Text>
-            <Muted>Monte a primeira ficha da pasta para o treino aparecer aqui.</Muted>
-            <BigButton title="Montar ficha" onPress={() => router.push({ pathname: '/pasta/[id]', params: { id: next.program.id } })} />
+            <Text style={st.welcome}>{next.program.name} ainda não tem treinos.</Text>
+            <Muted>Monte o primeiro treino da ficha para ele aparecer aqui.</Muted>
+            <BigButton title="Montar treino" onPress={() => router.push({ pathname: '/pasta/[id]', params: { id: next.program.id } })} />
           </Card>
         ) : (
           <Card style={{ gap: 10 }}>
             <Text style={st.welcome}>Bem-vindo ao kargo.</Text>
             <Muted>
-              Comece montando a sua ficha: uma pasta de treino com as fichas (A, B, C…), os exercícios e os substitutos. Se você já usa o kargo em outro celular, importe o backup.
+              Comece montando a sua ficha: os treinos (A, B, C…), os exercícios e os substitutos. Se você já usa o kargo em outro celular, importe o backup.
             </Muted>
             <BigButton title="Montar minha ficha" onPress={() => setCreating(true)} />
             <BigButton variant="light" title="Importar backup" onPress={() => router.push('/ajustes')} />
@@ -233,7 +243,7 @@ export default function Inicio() {
             onPress={() => r.slots > 0 && start(r.id, false)}
           />
         ))}
-        <LinkText muted onPress={() => { setPicking(false); router.push('/fichas'); }}>ver pastas e fichas</LinkText>
+        <LinkText muted onPress={() => { setPicking(false); router.push('/fichas'); }}>ver fichas e treinos</LinkText>
       </Sheet>
     </SafeAreaView>
   );
@@ -255,5 +265,6 @@ const st = StyleSheet.create({
   codeSmall: { fontFamily: fonts.text, fontSize: 14, color: colors.text2, letterSpacing: 0 },
   bar: { height: 6, borderRadius: 3, backgroundColor: colors.card2, overflow: 'hidden' },
   barFill: { height: 6, backgroundColor: colors.acaiLight },
+  edit: { width: 34, height: 34, borderRadius: 10, backgroundColor: colors.card2, alignItems: 'center', justifyContent: 'center' },
   welcome: { fontFamily: fonts.num, fontSize: 20, letterSpacing: -0.4, color: colors.text },
 });

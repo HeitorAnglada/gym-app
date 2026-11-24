@@ -69,7 +69,8 @@ export function programRows(
         routine_id: routineRow.id,
         sort: si,
         main_exercise_id: exId(s.main.key),
-        sets_min: s.sets[0],
+        // a ficha tem uma quantidade só de séries: fica a maior
+        sets_min: s.sets[1],
         sets_max: s.sets[1],
         reps_min: s.reps[0],
         reps_max: s.reps[1],

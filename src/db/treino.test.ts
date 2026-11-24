@@ -13,6 +13,7 @@ import { openTestDatabase } from '../test/sqlite.ts';
 import { backupFromPlan } from './backup.ts';
 import { createProgram, createRoutine, createSlot, deleteRoutine, duplicateRoutine, getSlot, listSlots, reorderSlots, updateSlot } from './editing.ts';
 import { exportBackup, importBackup, initDatabase } from './index.ts';
+import { MIGRATIONS, SCHEMA_VERSION } from './schema.ts';
 import { activateProgram, getNextRoutine, listExercises, listPrograms, listRoutines, listWorkouts } from './queries.ts';
 import {
   addSet, changeRest, currentExercise, endSet, goToExercise, moveOn, nextValues, removeSet, setNext, startSet, toggleSkip,
@@ -86,7 +87,7 @@ describe('banco novo e backup', () => {
     try {
       await initDatabase(fresh);
       await initDatabase(fresh);
-      assert.equal((await fresh.getFirstAsync<{ user_version: number }>('PRAGMA user_version'))?.user_version, 3);
+      assert.equal((await fresh.getFirstAsync<{ user_version: number }>('PRAGMA user_version'))?.user_version, SCHEMA_VERSION);
       assert.equal((await fresh.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM exercise'))?.n, 108);
     } finally {
       done();
@@ -137,6 +138,42 @@ describe('banco novo e backup', () => {
     assert.equal(d.workout.status, 'finalizado');
     assert.equal(d.exercises[0].sets.length, 3);
     assert.equal(d.exercises[0].sets_adjust, 0);
+  });
+
+  test('séries viram um número só: backup antigo com faixa "3 a 4" entra como 4', async () => {
+    const backup = await exportBackup(db);
+    backup.schemaVersion = 3;
+    backup.tables.slot = backup.tables.slot.map((r) => (r.sets_max === 4 ? { ...r, sets_min: 3 } : r));
+    assert.ok(backup.tables.slot.some((r) => r.sets_min !== r.sets_max));
+    await importBackup(db, backup);
+    const ranges = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM slot WHERE sets_min <> sets_max');
+    assert.equal(ranges?.n, 0);
+    const supino = await db.getFirstAsync<{ sets_min: number; sets_max: number }>(
+      `SELECT s.sets_min, s.sets_max FROM slot s JOIN exercise e ON e.id = s.main_exercise_id WHERE e.builtin_key = 'supino-reto-barra'`,
+    );
+    assert.deepEqual([supino?.sets_min, supino?.sets_max], [4, 4]);
+  });
+
+  test('migração 4 junta a faixa de séries de quem já tinha o app', async () => {
+    const { db: old, cleanup: done } = openTestDatabase();
+    try {
+      for (const sql of MIGRATIONS.slice(0, 3)) await old.execAsync(sql);
+      await old.execAsync('PRAGMA user_version = 3');
+      const now = '2026-11-20T00:00:00.000Z';
+      await old.runAsync(`INSERT INTO exercise (id, created_at, updated_at, name, muscle_group, equipment, step_kg) VALUES ('e', ?, ?, 'X', 'peito', 'barra', 2.5)`, now, now);
+      await old.runAsync(`INSERT INTO program (id, created_at, updated_at, name, is_active, sort) VALUES ('p', ?, ?, 'P', 1, 0)`, now, now);
+      await old.runAsync(`INSERT INTO routine (id, created_at, updated_at, program_id, code, name, sort) VALUES ('r', ?, ?, 'p', 'A', '', 0)`, now, now);
+      await old.runAsync(
+        `INSERT INTO slot (id, created_at, updated_at, routine_id, sort, main_exercise_id, sets_min, sets_max, reps_min, reps_max, rest_sec, is_priority)
+         VALUES ('s', ?, ?, 'r', 0, 'e', 3, 4, 8, 12, 90, 0)`, now, now,
+      );
+      await initDatabase(old);
+      const s = await old.getFirstAsync<{ sets_min: number; sets_max: number; updated_at: string }>(`SELECT sets_min, sets_max, updated_at FROM slot WHERE id = 's'`);
+      assert.deepEqual([s?.sets_min, s?.sets_max], [4, 4]);
+      assert.notEqual(s?.updated_at, now);
+    } finally {
+      done();
+    }
   });
 
   test('recusa arquivo que não é backup e backup de versão mais nova', async () => {

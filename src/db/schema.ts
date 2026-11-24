@@ -26,6 +26,15 @@ export const TABLES = [
 
 export type TableName = (typeof TABLES)[number];
 
+/**
+ * Séries deixaram de ser faixa na ficha: mínimo = máximo. Fica o número maior.
+ * Roda na migração 4 e depois de importar um backup antigo. Treinos já feitos não mudam.
+ */
+export const SINGLE_SET_COUNT_SQL = `
+  UPDATE slot SET sets_min = sets_max, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  WHERE sets_min <> sets_max;
+`;
+
 export const MIGRATIONS: string[] = [
   // 1: esquema inicial da v1
   `
@@ -128,6 +137,8 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE workout_exercise ADD COLUMN initial_load REAL;
   CREATE INDEX idx_workout_status ON workout(status);
   `,
+  // 4: a ficha passa a ter uma quantidade só de séries (não mais "3 a 4"): fica o máximo
+  SINGLE_SET_COUNT_SQL,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

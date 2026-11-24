@@ -16,9 +16,9 @@ export function nextRoutineCode(existing: string[]): string {
 /** Erro para mostrar na tela, ou null quando a letra pode ser usada. */
 export function routineCodeError(code: string, otherCodes: string[]): string | null {
   const c = norm(code);
-  if (!c) return 'A ficha precisa de uma letra.';
+  if (!c) return 'O treino precisa de uma letra.';
   if (c.length > 4) return 'Use até 4 caracteres.';
-  if (otherCodes.map(norm).includes(c)) return `Já existe uma ficha ${c} nesta pasta.`;
+  if (otherCodes.map(norm).includes(c)) return `Já existe um treino ${c} nesta ficha.`;
   return null;
 }
 

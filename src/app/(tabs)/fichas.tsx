@@ -30,14 +30,14 @@ export default function Fichas() {
       <ScrollView contentContainerStyle={[s.pad, { paddingBottom: 90 }]}>
         <ScreenTitle>fichas</ScreenTitle>
         {programs.length === 0 && (
-          <EmptyState title="Nenhuma pasta de treino" body="Uma pasta guarda as fichas de um programa (ex.: A1 → B → A2). Toque em + pasta para montar a sua, ou importe um backup em Ajustes." />
+          <EmptyState title="Nenhuma ficha ainda" body="Uma ficha guarda os treinos de um programa (ex.: A1 → B → A2). Toque em + ficha para montar a sua, ou importe um backup em Ajustes." />
         )}
         {active.length > 0 && <Label>em uso</Label>}
         {active.map((p) => <ProgramCard key={p.id} p={p} />)}
-        {others.length > 0 && <Label>outras pastas</Label>}
+        {others.length > 0 && <Label>outras fichas</Label>}
         {others.map((p) => <ProgramCard key={p.id} p={p} />)}
       </ScrollView>
-      <Fab title="+ pasta" onPress={() => setCreating(true)} />
+      <Fab title="+ ficha" onPress={() => setCreating(true)} />
       <NewProgramSheet visible={creating} onClose={() => setCreating(false)} />
     </SafeAreaView>
   );
@@ -54,7 +54,7 @@ function ProgramCard({ p }: { p: ProgramRow }) {
         <View style={{ flex: 1, gap: 2 }}>
           <Text style={st.name}>{p.name}</Text>
           <Muted style={{ fontSize: 12 }}>
-            {p.routine_codes ?? 'sem fichas'}{since} · {p.workouts} {p.workouts === 1 ? 'treino' : 'treinos'}
+            {p.routine_codes ?? 'sem treinos'}{since} · {p.workouts} {p.workouts === 1 ? 'treino feito' : 'treinos feitos'}
           </Muted>
         </View>
         <Text style={st.chev}>›</Text>

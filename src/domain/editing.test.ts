@@ -12,8 +12,8 @@ describe('montar fichas', () => {
   });
 
   test('letra não repete na pasta', () => {
-    assert.equal(routineCodeError('b', ['A1', 'B']), 'Já existe uma ficha B nesta pasta.');
-    assert.equal(routineCodeError('  ', []), 'A ficha precisa de uma letra.');
+    assert.equal(routineCodeError('b', ['A1', 'B']), 'Já existe um treino B nesta ficha.');
+    assert.equal(routineCodeError('  ', []), 'O treino precisa de uma letra.');
     assert.equal(routineCodeError('C', ['A', 'B']), null);
     assert.equal(routineCodeError('ABCDE', []), 'Use até 4 caracteres.');
   });
