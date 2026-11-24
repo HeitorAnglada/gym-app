@@ -11,7 +11,7 @@ export const VIEW = { w: 200, h: 180, ground: 172 } as const;
 
 const LEN = { torso: 45, neck: 14, uarm: 27, farm: 25, thigh: 36, shin: 34, foot: 13, shoulder: 14, hip: 8 } as const;
 
-type Pt = [number, number];
+export type Pt = [number, number];
 type Joint = 'hip' | 'sh' | 'el' | 'ha' | 'kn' | 'an' | 'toe' | 'head';
 
 interface Pose {
@@ -44,12 +44,55 @@ export interface Movement {
   props?: Prop[];
   /** Segundos de uma ida e volta. */
   period?: number;
+  /** Pose do músculo contraído (fim da subida). Padrão: b. */
+  peak?: 'a' | 'b';
+  /** Vista de frente, mas mostrando as costas (barra fixa, puxada). */
+  back?: boolean;
+  /** Músculos trabalhados: p = alvo, s = auxiliares. */
+  muscles?: { p: MuscleId[]; s: MuscleId[] };
 }
+
+export type MuscleId =
+  | 'peitoral' | 'peitoralSup' | 'deltAnt' | 'deltLat' | 'deltPost' | 'trapezio' | 'dorsal' | 'lombar'
+  | 'abdomen' | 'biceps' | 'triceps' | 'antebraco' | 'quadriceps' | 'posterior' | 'gluteo' | 'panturrilha';
+
+export const MUSCLE_NAME: Record<MuscleId, string> = {
+  peitoral: 'peitoral', peitoralSup: 'peitoral superior', deltAnt: 'ombro (frente)', deltLat: 'ombro (lateral)',
+  deltPost: 'ombro (posterior)', trapezio: 'trapézio', dorsal: 'dorsal', lombar: 'lombar', abdomen: 'abdômen',
+  biceps: 'bíceps', triceps: 'tríceps', antebraco: 'antebraço', quadriceps: 'quadríceps', posterior: 'posterior de coxa',
+  gluteo: 'glúteo', panturrilha: 'panturrilha',
+};
+
+/**
+ * Ritmo de uma repetição: sobe (concêntrica) mais rápido, segura em cima, desce devagar, respira embaixo.
+ * Devolve quanto já foi do caminho até o músculo contraído (0 = alongado, 1 = contraído).
+ */
+export function tempo(seconds: number, period: number): number {
+  const x = (((seconds / period) % 1) + 1) % 1;
+  const ease = (v: number) => (1 - Math.cos(Math.PI * v)) / 2;
+  const UP = 0.32, TOP = 0.13, DOWN = 0.45; // o resto (0,10) é a pausa embaixo; mesmo corte de tempoPhase
+  if (x < UP) return ease(x / UP);
+  if (x < UP + TOP) return 1;
+  if (x < UP + TOP + DOWN) return 1 - ease((x - UP - TOP) / DOWN);
+  return 0;
+}
+
+/** Em que parte da repetição está, para a legenda embaixo da animação. */
+export function tempoPhase(seconds: number, period: number): 'contrai' | 'segura' | 'volta devagar' | 'alonga' {
+  const x = (((seconds / period) % 1) + 1) % 1;
+  if (x < 0.32) return 'contrai';
+  if (x < 0.45) return 'segura';
+  if (x < 0.9) return 'volta devagar';
+  return 'alonga';
+}
+
+/** Pose (t de figureAt) para uma contração c (0..1). */
+export const poseT = (m: Movement, c: number) => ((m.peak ?? 'b') === 'b' ? c : 1 - c);
 
 export interface Figure {
   bones: [Pt, Pt][];
   head: Pt;
-  props: { lines: [Pt, Pt][]; cables: [Pt, Pt][]; dots: { c: Pt; r: number }[]; rects: { x: number; y: number; w: number; h: number }[] };
+  props: { lines: [Pt, Pt][]; cables: [Pt, Pt][]; dots: { c: Pt; r: number; kind: 'bar' | 'dumbbell' | 'pad' }[]; plates: [Pt, Pt][]; rects: { x: number; y: number; w: number; h: number }[] };
 }
 
 const rad = (d: number) => (d * Math.PI) / 180;
@@ -76,51 +119,78 @@ export function phase(seconds: number, period: number): number {
   return (1 - Math.cos((2 * Math.PI * seconds) / period)) / 2;
 }
 
-/** O boneco e os aparelhos no instante t (0 = pose a, 1 = pose b). */
-export function figureAt(m: Movement, t: number): Figure {
+/** Um lado do corpo: braço e perna. */
+export interface Side { sh: Pt; el: Pt; ha: Pt; hip: Pt; kn: Pt; an: Pt; toe: Pt }
+
+/**
+ * Esqueleto no instante t. De lado, `near` é o lado que a gente vê e `far` o de trás
+ * (mesma pose, um pouco deslocado, para dar profundidade). De frente, `near` = direita e `far` = esquerda.
+ */
+export interface Skeleton {
+  front: boolean;
+  hip: Pt;
+  sh: Pt;
+  head: Pt;
+  near: Side;
+  far: Side;
+}
+
+/** Deslocamento do lado de trás na vista de lado. */
+const FAR: Pt = [-3, -2];
+
+export function skeletonAt(m: Movement, t: number): Skeleton {
   const p = lerpPose(m.a, m.b, t);
   const hip: Pt = [100, 100];
   const sh = add(step(hip, LEN.torso, p.torso), [0, -p.lift]);
   const head = step(sh, LEN.neck, p.torso);
   if (m.front) head[1] = sh[1] - LEN.neck;
 
-  // lado direito (ou o único, de lado)
-  const shR: Pt = m.front ? [sh[0] + LEN.shoulder, sh[1]] : sh;
-  const elR = step(shR, LEN.uarm, p.uarm);
-  const haR = step(elR, LEN.farm, p.farm);
-  const hipR: Pt = m.front ? [hip[0] + LEN.hip, hip[1]] : hip;
-  const knR = step(hipR, LEN.thigh, p.thigh);
-  const anR = step(knR, LEN.shin, p.shin);
-  const toe = step(anR, LEN.foot, p.foot);
-
-  const joints: Record<Joint, Pt> = { hip, sh, el: elR, ha: haR, kn: knR, an: anR, toe, head };
-  const target = m.at;
-  const cur = joints[m.anchor];
-  const d: Pt = [target[0] == null ? 0 : target[0] - cur[0], target[1] - cur[1]];
-  const mv = (q: Pt) => add(q, d);
-
-  const bones: [Pt, Pt][] = [];
-  const handsList: Pt[] = [];
-  const anklesList: Pt[] = [];
-  if (m.front) {
-    const shL: Pt = [sh[0] - LEN.shoulder, sh[1]];
-    const elL = step(shL, LEN.uarm, mirror(p.uarm));
-    const haL = step(elL, LEN.farm, mirror(p.farm));
-    const hipL: Pt = [hip[0] - LEN.hip, hip[1]];
-    const knL = step(hipL, LEN.thigh, mirror(p.thigh));
-    const anL = step(knL, LEN.shin, mirror(p.shin));
-    bones.push(
-      [shL, shR], [hipL, hipR], [hip, sh],
-      [shR, elR], [elR, haR], [shL, elL], [elL, haL],
-      [hipR, knR], [knR, anR], [hipL, knL], [knL, anL],
-    );
-    handsList.push(haR, haL);
-    anklesList.push(anR, anL);
-  } else {
-    bones.push([hip, sh], [sh, elR], [elR, haR], [hip, knR], [knR, anR], [anR, toe]);
-    handsList.push(haR);
-    anklesList.push(anR);
+  const side = (dir: 1 | -1): Side => {
+    const ang = (a: number) => (dir === 1 ? a : mirror(a));
+    const s: Pt = m.front ? [sh[0] + dir * LEN.shoulder, sh[1]] : sh;
+    const el = step(s, LEN.uarm, ang(p.uarm));
+    const ha = step(el, LEN.farm, ang(p.farm));
+    const h: Pt = m.front ? [hip[0] + dir * LEN.hip, hip[1]] : hip;
+    const kn = step(h, LEN.thigh, ang(p.thigh));
+    const an = step(kn, LEN.shin, ang(p.shin));
+    const toe = step(an, LEN.foot, ang(p.foot));
+    return { sh: s, el, ha, hip: h, kn, an, toe };
+  };
+  const near = side(1);
+  let far = side(-1);
+  if (!m.front) {
+    const n = side(1);
+    far = Object.fromEntries(Object.entries(n).map(([k, v]) => [k, add(v, FAR)])) as unknown as Side;
   }
+
+  const joints: Record<Joint, Pt> = { hip, sh, el: near.el, ha: near.ha, kn: near.kn, an: near.an, toe: near.toe, head };
+  const cur = joints[m.anchor];
+  const d: Pt = [m.at[0] == null ? 0 : m.at[0] - cur[0], m.at[1] - cur[1]];
+  const mv = (q: Pt) => add(q, d);
+  const mvSide = (s: Side): Side => ({ sh: mv(s.sh), el: mv(s.el), ha: mv(s.ha), hip: mv(s.hip), kn: mv(s.kn), an: mv(s.an), toe: mv(s.toe) });
+  return { front: !!m.front, hip: mv(hip), sh: mv(sh), head: mv(head), near: mvSide(near), far: mvSide(far) };
+}
+
+/** O boneco e os aparelhos no instante t (0 = pose a, 1 = pose b). */
+export function figureAt(m: Movement, t: number): Figure {
+  const k = skeletonAt(m, t);
+  const { near, far } = k;
+  const bones: [Pt, Pt][] = [];
+  const handsList: Pt[] = [near.ha];
+  const anklesList: Pt[] = [near.an];
+  if (m.front) {
+    bones.push(
+      [far.sh, near.sh], [far.hip, near.hip], [k.hip, k.sh],
+      [near.sh, near.el], [near.el, near.ha], [far.sh, far.el], [far.el, far.ha],
+      [near.hip, near.kn], [near.kn, near.an], [far.hip, far.kn], [far.kn, far.an],
+    );
+    handsList.push(far.ha);
+    anklesList.push(far.an);
+  } else {
+    bones.push([k.hip, k.sh], [k.sh, near.el], [near.el, near.ha], [k.hip, near.kn], [near.kn, near.an], [near.an, near.toe]);
+  }
+  const joints: Record<Joint, Pt> = { hip: k.hip, sh: k.sh, el: near.el, ha: near.ha, kn: near.kn, an: near.an, toe: near.toe, head: k.head };
+  const mv = (q: Pt) => q;
 
   const at = (j: Joint): Pt[] => {
     if (j === 'ha') return handsList.map(mv);
@@ -128,22 +198,23 @@ export function figureAt(m: Movement, t: number): Figure {
     return [mv(joints[j])];
   };
 
-  const props: Figure['props'] = { lines: [], cables: [], dots: [], rects: [] };
+  const props: Figure['props'] = { lines: [], cables: [], dots: [], rects: [], plates: [] };
   for (const pr of m.props ?? []) {
     switch (pr.kind) {
       case 'bar': {
         const pts = at(pr.at).map((q) => add(q, [0, pr.dy ?? 0]));
         if (m.front && pts.length === 2) {
           const [r, l] = pts;
-          props.lines.push([[l[0] - 10, l[1]], [r[0] + 10, r[1]]]);
-        } else pts.forEach((q) => props.dots.push({ c: q, r: 6 }));
+          props.lines.push([[l[0] - 16, l[1]], [r[0] + 16, r[1]]]);
+          props.plates.push([[l[0] - 12, l[1] - 9], [l[0] - 12, l[1] + 9]], [[r[0] + 12, r[1] - 9], [r[0] + 12, r[1] + 9]]);
+        } else pts.forEach((q) => props.dots.push({ c: q, r: 6, kind: 'bar' }));
         break;
       }
       case 'dumbbell':
-        at(pr.at).forEach((q) => props.dots.push({ c: add(q, [0, pr.dy ?? 0]), r: 4.5 }));
+        at(pr.at).forEach((q) => props.dots.push({ c: add(q, [0, pr.dy ?? 0]), r: 4.5, kind: 'dumbbell' }));
         break;
       case 'pad':
-        at(pr.at).forEach((q) => props.dots.push({ c: add(q, [0, pr.dy ?? 0]), r: 5 }));
+        at(pr.at).forEach((q) => props.dots.push({ c: add(q, [0, pr.dy ?? 0]), r: 5, kind: 'pad' }));
         break;
       case 'cable':
         at(pr.to).forEach((q, i) => {
@@ -163,7 +234,7 @@ export function figureAt(m: Movement, t: number): Figure {
     }
   }
 
-  return { bones: bones.map(([a, b]) => [mv(a), mv(b)]), head: mv(head), props };
+  return { bones, head: k.head, props };
 }
 
 // ---------------------------------------------------------------------------
@@ -171,24 +242,25 @@ export function figureAt(m: Movement, t: number): Figure {
 
 const STAND: Pose = { torso: -90, uarm: 90, farm: 90, thigh: 90, shin: 90, foot: 0 };
 const FRONT_LEGS = { thigh: 94, shin: 90 };
-const BENCH: Prop = { kind: 'rect', x: 30, y: 144, w: 100, h: 7 };
+const BENCH: Prop = { kind: 'rect', x: 30, y: 143, w: 100, h: 9 };
 const BENCH_LEGS: Prop[] = [
-  { kind: 'line', from: [40, 151], to: [40, 172] },
-  { kind: 'line', from: [120, 151], to: [120, 172] },
+  { kind: 'line', from: [40, 152], to: [40, 172] },
+  { kind: 'line', from: [120, 152], to: [120, 172] },
 ];
 const SEAT = (x: number, y: number): Prop[] => [
   { kind: 'rect', x: x - 22, y, w: 44, h: 7 },
   { kind: 'line', from: [x, y + 7], to: [x, 172] },
 ];
-const LYING = { anchor: 'hip' as const, at: [110, 138] as [number, number] };
+const LYING = { anchor: 'hip' as const, at: [110, 134] as [number, number] };
 const LYING_LEGS = { thigh: 0, shin: 90, foot: 0 };
 
 export const MOVEMENTS = {
   supino: {
     ...LYING,
-    a: { torso: 180, uarm: 45, farm: -95, ...LYING_LEGS },
+    a: { torso: 180, uarm: 25, farm: -100, ...LYING_LEGS },
     b: { torso: 180, uarm: -85, farm: -90, ...LYING_LEGS },
     props: [BENCH, ...BENCH_LEGS, { kind: 'bar', at: 'ha' }],
+    muscles: { p: ['peitoral'], s: ['deltAnt', 'triceps'] },
   },
   crucifixo: {
     front: true, anchor: 'an', at: [null, 170],
