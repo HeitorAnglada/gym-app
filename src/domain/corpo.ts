@@ -236,6 +236,7 @@ export function sceneAt(m: Movement, t: number, opts: SceneOpts): Shape[] {
 
   if (showProps) {
     for (const r of fig.props.rects) out.push({ d: roundRect(r.x, r.y, r.w, r.h, 3), fill: PAL.bench });
+    for (const [a, b] of fig.props.slabs) out.push({ d: `M${P(a)}L${P(b)}`, stroke: PAL.bench, sw: 9 });
     for (const [a, b] of fig.props.lines) out.push({ d: `M${P(a)}L${P(b)}`, stroke: PAL.prop, sw: 4, op: 0.55 });
     for (const [a, b] of fig.props.cables) out.push({ d: `M${P(a)}L${P(b)}`, stroke: PAL.prop, sw: 1.4, op: 0.6 });
   }
@@ -338,6 +339,7 @@ export function fitBox(m: Movement, ratio: number, pad = 12): [number, number, n
     for (const s of [k.near, k.far]) for (const p of Object.values(s)) take(p as Pt, 9);
     for (const d of fig.props.dots) take(d.c, d.kind === 'bar' ? 13 : 7);
     for (const r of fig.props.rects) { take([r.x, r.y]); take([r.x + r.w, r.y + r.h]); }
+    for (const [a, b] of fig.props.slabs) { take(a, 5); take(b, 5); }
   }
   y1 = Math.max(y1, 174);
   x0 -= pad; x1 += pad; y0 -= pad; y1 += 4;

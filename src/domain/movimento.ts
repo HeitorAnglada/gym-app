@@ -30,7 +30,9 @@ type Prop =
   | { kind: 'cable'; from: Pt; to: Joint }
   | { kind: 'plate'; at: Joint; angle: number }
   | { kind: 'line'; from: Pt; to: Pt }
-  | { kind: 'rect'; x: number; y: number; w: number; h: number };
+  | { kind: 'rect'; x: number; y: number; w: number; h: number }
+  /** Estofado inclinado (encosto do banco inclinado). */
+  | { kind: 'slab'; from: Pt; to: Pt };
 
 export interface Movement {
   /** Vista de frente (braços e pernas espelhados) ou de lado. */
@@ -44,6 +46,8 @@ export interface Movement {
   props?: Prop[];
   /** Segundos de uma ida e volta. */
   period?: number;
+  /** Pose fixa do braço/perna de trás (ou esquerdo), quando não acompanha o da frente (serrote). */
+  far?: Partial<Pose>;
   /** Pose do músculo contraído (fim da subida). Padrão: b. */
   peak?: 'a' | 'b';
   /** Vista de frente, mas mostrando as costas (barra fixa, puxada). */
@@ -92,7 +96,7 @@ export const poseT = (m: Movement, c: number) => ((m.peak ?? 'b') === 'b' ? c : 
 export interface Figure {
   bones: [Pt, Pt][];
   head: Pt;
-  props: { lines: [Pt, Pt][]; cables: [Pt, Pt][]; dots: { c: Pt; r: number; kind: 'bar' | 'dumbbell' | 'pad' }[]; plates: [Pt, Pt][]; rects: { x: number; y: number; w: number; h: number }[] };
+  props: { lines: [Pt, Pt][]; cables: [Pt, Pt][]; dots: { c: Pt; r: number; kind: 'bar' | 'dumbbell' | 'pad' }[]; plates: [Pt, Pt][]; rects: { x: number; y: number; w: number; h: number }[]; slabs: [Pt, Pt][] };
 }
 
 const rad = (d: number) => (d * Math.PI) / 180;
@@ -145,7 +149,7 @@ export function skeletonAt(m: Movement, t: number): Skeleton {
   const head = step(sh, LEN.neck, p.torso);
   if (m.front) head[1] = sh[1] - LEN.neck;
 
-  const side = (dir: 1 | -1): Side => {
+  const side = (dir: 1 | -1, p: Required<Pose>): Side => {
     const ang = (a: number) => (dir === 1 ? a : mirror(a));
     const s: Pt = m.front ? [sh[0] + dir * LEN.shoulder, sh[1]] : sh;
     const el = step(s, LEN.uarm, ang(p.uarm));
@@ -156,10 +160,11 @@ export function skeletonAt(m: Movement, t: number): Skeleton {
     const toe = step(an, LEN.foot, ang(p.foot));
     return { sh: s, el, ha, hip: h, kn, an, toe };
   };
-  const near = side(1);
-  let far = side(-1);
+  const near = side(1, p);
+  const farPose = { ...p, ...m.far };
+  let far = side(-1, farPose);
   if (!m.front) {
-    const n = side(1);
+    const n = side(1, farPose);
     far = Object.fromEntries(Object.entries(n).map(([k, v]) => [k, add(v, FAR)])) as unknown as Side;
   }
 
@@ -198,7 +203,7 @@ export function figureAt(m: Movement, t: number): Figure {
     return [mv(joints[j])];
   };
 
-  const props: Figure['props'] = { lines: [], cables: [], dots: [], rects: [], plates: [] };
+  const props: Figure['props'] = { lines: [], cables: [], dots: [], rects: [], slabs: [], plates: [] };
   for (const pr of m.props ?? []) {
     switch (pr.kind) {
       case 'bar': {
@@ -206,7 +211,8 @@ export function figureAt(m: Movement, t: number): Figure {
         if (m.front && pts.length === 2) {
           const [r, l] = pts;
           props.lines.push([[l[0] - 16, l[1]], [r[0] + 16, r[1]]]);
-          props.plates.push([[l[0] - 12, l[1] - 9], [l[0] - 12, l[1] + 9]], [[r[0] + 12, r[1] - 9], [r[0] + 12, r[1] + 9]]);
+          // barra de polia (puxada) não tem anilha
+          if (!m.props?.some((q) => q.kind === 'cable')) props.plates.push([[l[0] - 12, l[1] - 9], [l[0] - 12, l[1] + 9]], [[r[0] + 12, r[1] - 9], [r[0] + 12, r[1] + 9]]);
         } else pts.forEach((q) => props.dots.push({ c: q, r: 6, kind: 'bar' }));
         break;
       }
@@ -230,6 +236,9 @@ export function figureAt(m: Movement, t: number): Figure {
         break;
       case 'rect':
         props.rects.push({ x: pr.x, y: pr.y, w: pr.w, h: pr.h });
+        break;
+      case 'slab':
+        props.slabs.push([pr.from, pr.to]);
         break;
     }
   }
@@ -260,7 +269,6 @@ export const MOVEMENTS = {
     a: { torso: 180, uarm: 25, farm: -100, ...LYING_LEGS },
     b: { torso: 180, uarm: -85, farm: -90, ...LYING_LEGS },
     props: [BENCH, ...BENCH_LEGS, { kind: 'bar', at: 'ha' }],
-    muscles: { p: ['peitoral'], s: ['deltAnt', 'triceps'] },
   },
   crucifixo: {
     front: true, anchor: 'an', at: [null, 170],
@@ -425,6 +433,36 @@ export const MOVEMENTS = {
     props: [{ kind: 'dumbbell', at: 'ha' }],
     period: 1.6,
   },
+  supinoInclinado: {
+    anchor: 'hip', at: [118, 136],
+    a: { torso: -150, uarm: 55, farm: -90, thigh: 0, shin: 90, foot: 0 },
+    b: { torso: -150, uarm: -100, farm: -95, thigh: 0, shin: 90, foot: 0 },
+    props: [
+      { kind: 'rect', x: 104, y: 141, w: 34, h: 9 }, { kind: 'line', from: [120, 150], to: [120, 172] },
+      { kind: 'slab', from: [110, 150], to: [64, 120] }, { kind: 'line', from: [72, 128], to: [72, 172] },
+      { kind: 'bar', at: 'ha' },
+    ],
+  },
+  remadaUnilateral: {
+    anchor: 'hip', at: [122, 100],
+    a: { torso: -168, uarm: 92, farm: 90, thigh: 95, shin: 90, foot: 0 },
+    b: { torso: -168, uarm: -22, farm: 100, thigh: 95, shin: 90, foot: 0 },
+    far: { uarm: 90, farm: 90, thigh: 90, shin: 0, foot: 0 },
+    props: [
+      { kind: 'rect', x: 50, y: 140, w: 112, h: 9 }, { kind: 'line', from: [60, 149], to: [60, 172] }, { kind: 'line', from: [150, 149], to: [150, 172] },
+      { kind: 'dumbbell', at: 'ha' },
+    ],
+  },
+  roscaInclinada: {
+    anchor: 'hip', at: [96, 136],
+    a: { torso: -128, uarm: 100, farm: 100, thigh: 0, shin: 90, foot: 0 },
+    b: { torso: -128, uarm: 100, farm: -55, thigh: 0, shin: 90, foot: 0 },
+    props: [
+      { kind: 'rect', x: 80, y: 141, w: 36, h: 9 }, { kind: 'line', from: [98, 150], to: [98, 172] },
+      { kind: 'slab', from: [90, 145], to: [52, 98] },
+      { kind: 'dumbbell', at: 'ha' },
+    ],
+  },
   facePull: {
     anchor: 'toe', at: [96, 172],
     a: { ...STAND, torso: -92, uarm: 0, farm: 0 },
@@ -434,6 +472,78 @@ export const MOVEMENTS = {
 } satisfies Record<string, Movement>;
 
 export type MovementName = keyof typeof MOVEMENTS;
+
+type Work = { p: MuscleId[]; s: MuscleId[] };
+const w = (p: MuscleId[], s: MuscleId[] = []): Work => ({ p, s });
+
+/** Músculos de cada movimento: p = alvo (açaí claro), s = ajudam (açaí escuro). */
+export const WORK: Record<MovementName, Work> = {
+  supino: w(['peitoral'], ['deltAnt', 'triceps']),
+  supinoInclinado: w(['peitoralSup'], ['deltAnt', 'triceps']),
+  crucifixo: w(['peitoral'], ['deltAnt']),
+  crossover: w(['peitoral'], ['deltAnt']),
+  flexao: w(['peitoral'], ['triceps', 'deltAnt', 'abdomen']),
+  paralelas: w(['peitoral', 'triceps'], ['deltAnt']),
+  remada: w(['dorsal'], ['trapezio', 'deltPost', 'biceps', 'lombar']),
+  remadaUnilateral: w(['dorsal'], ['trapezio', 'deltPost', 'biceps']),
+  remadaSentada: w(['dorsal'], ['trapezio', 'deltPost', 'biceps']),
+  puxada: w(['dorsal'], ['biceps', 'trapezio', 'deltPost']),
+  barraFixa: w(['dorsal'], ['biceps', 'trapezio', 'deltPost']),
+  pulldownBracoReto: w(['dorsal'], ['triceps', 'abdomen']),
+  terra: w(['posterior', 'gluteo'], ['lombar']),
+  agachamento: w(['quadriceps', 'gluteo'], ['posterior', 'lombar']),
+  legPress: w(['quadriceps', 'gluteo'], ['posterior']),
+  extensora: w(['quadriceps']),
+  flexora: w(['posterior'], ['panturrilha']),
+  panturrilha: w(['panturrilha']),
+  elevacaoPelvica: w(['gluteo'], ['posterior']),
+  abdominal: w(['abdomen']),
+  prancha: w(['abdomen'], ['deltAnt', 'quadriceps']),
+  rosca: w(['biceps'], ['antebraco']),
+  roscaInclinada: w(['biceps'], ['antebraco']),
+  tricepsPolia: w(['triceps'], ['antebraco']),
+  tricepsTesta: w(['triceps']),
+  tricepsFrances: w(['triceps']),
+  desenvolvimento: w(['deltAnt', 'deltLat'], ['triceps', 'trapezio']),
+  elevacaoLateral: w(['deltLat'], ['trapezio']),
+  elevacaoFrontal: w(['deltAnt'], ['peitoralSup']),
+  remadaAlta: w(['deltLat', 'trapezio'], ['biceps']),
+  encolhimento: w(['trapezio']),
+  facePull: w(['deltPost'], ['trapezio']),
+};
+
+/** Movimentos em que o músculo contrai na pose a (descer é a parte fácil). */
+const PEAK_A: MovementName[] = ['flexao', 'paralelas', 'terra', 'agachamento'];
+/** De frente, mas o que trabalha está nas costas: mostra o corpo de costas. */
+const FROM_BACK: MovementName[] = ['puxada', 'barraFixa'];
+
+for (const [k, mv] of Object.entries(MOVEMENTS) as [MovementName, Movement][]) {
+  mv.muscles = WORK[k];
+  if (PEAK_A.includes(k)) mv.peak = 'a';
+  if (FROM_BACK.includes(k)) mv.back = true;
+}
+
+/** Ajustes pelo nome do exercício: halteres no lugar da barra, músculo alvo de variações. */
+export function variantFor(key: MovementName, name: string): Movement {
+  const n = strip(name);
+  const base: Movement = MOVEMENTS[key];
+  let props = base.props;
+  if (/halter/.test(n) && ['supino', 'supinoInclinado', 'remada', 'terra', 'tricepsTesta'].includes(key)) {
+    props = props?.map((p) => (p.kind === 'bar' ? { ...p, kind: 'dumbbell' as const } : p));
+  }
+  if (/barra|militar/.test(n) && ['rosca', 'desenvolvimento'].includes(key)) {
+    props = props?.map((p) => (p.kind === 'dumbbell' ? { ...p, kind: 'bar' as const } : p));
+  }
+  let muscles = base.muscles;
+  if (/martelo|invertida/.test(n)) muscles = w(['biceps', 'antebraco'], []);
+  else if (/triceps banco|mergulho/.test(n)) muscles = w(['triceps'], ['peitoral', 'deltAnt']);
+  else if (/declinad/.test(n)) muscles = w(['peitoral'], ['triceps', 'deltAnt']);
+  else if (/inclinad/.test(n) && ['crucifixo', 'crossover'].includes(key)) muscles = w(['peitoralSup'], ['deltAnt']);
+  else if (/passada|afundo|bulgaro/.test(n)) muscles = w(['quadriceps', 'gluteo'], ['posterior']);
+  else if (/good morning|stiff/.test(n)) muscles = w(['posterior'], ['gluteo', 'lombar']);
+  else if (/supinada|chin/.test(n)) muscles = w(['dorsal', 'biceps'], ['trapezio']);
+  return props === base.props && muscles === base.muscles ? base : { ...base, props, muscles };
+}
 
 const strip = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
@@ -451,12 +561,14 @@ const BY_NAME: [RegExp, MovementName][] = [
   [/terra|rdl|stiff|good morning/, 'terra'],
   [/triceps testa|testa/, 'tricepsTesta'],
   [/frances|acima da cabeca|overhead/, 'tricepsFrances'],
+  [/rosca.*inclinad|inclinad.*rosca|rosca banco/, 'roscaInclinada'],
   [/triceps banco|mergulho|paralela|dips/, 'paralelas'],
   [/triceps/, 'tricepsPolia'],
   [/rosca/, 'rosca'],
   [/crucifixo invertido|face pull|posterior de ombro/, 'facePull'],
   [/crossover/, 'crossover'],
   [/crucifixo|peck deck|voador/, 'crucifixo'],
+  [/supino.*inclinad/, 'supinoInclinado'],
   [/supino/, 'supino'],
   [/elevacao lateral/, 'elevacaoLateral'],
   [/elevacao frontal/, 'elevacaoFrontal'],
@@ -464,7 +576,8 @@ const BY_NAME: [RegExp, MovementName][] = [
   [/encolhimento/, 'encolhimento'],
   [/remada alta/, 'remadaAlta'],
   [/remada baixa|remada sentada|remada articulada|remada na maquina/, 'remadaSentada'],
-  [/remada|serrote|cavalinho/, 'remada'],
+  [/serrote|unilateral/, 'remadaUnilateral'],
+  [/remada|cavalinho/, 'remada'],
   [/braco reto|pullover/, 'pulldownBracoReto'],
   [/barra fixa|graviton|pull ?up|chin ?up/, 'barraFixa'],
   [/puxada|pulldown/, 'puxada'],
