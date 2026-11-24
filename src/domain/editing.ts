@@ -67,6 +67,16 @@ export function parseLoad(text: string): number | null | 'invalid' {
   return Math.round(n * 100) / 100;
 }
 
+/** Passos oferecidos na tela do treino. Polia e máquina costumam ter placas pequenas (0,5 / 1 / 1,25 kg). */
+export const STEP_OPTIONS = [0.5, 1, 1.25, 2, 2.5, 5] as const;
+
+/** Lê um passo digitado: maior que zero e até 50 kg. */
+export function parseStep(text: string): number | null {
+  const v = parseLoad(text);
+  if (v === 'invalid' || v == null || v <= 0 || v > 50) return null;
+  return v;
+}
+
 export function formatLoad(kg: number): string {
   return String(kg).replace('.', ',');
 }

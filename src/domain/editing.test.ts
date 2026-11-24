@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { copyName, moveItem, nextRoutineCode, parseLoad, routineCodeError, setRangeEnd } from './editing.ts';
+import { copyName, moveItem, nextRoutineCode, parseLoad, parseStep, routineCodeError, setRangeEnd } from './editing.ts';
 
 describe('montar fichas', () => {
   test('próxima letra livre', () => {
@@ -41,5 +41,14 @@ describe('montar fichas', () => {
     assert.equal(parseLoad(''), null);
     assert.equal(parseLoad('abc'), 'invalid');
     assert.equal(parseLoad('-2'), 'invalid');
+  });
+
+  test('passo digitado: decimal com vírgula, maior que zero', () => {
+    assert.equal(parseStep('1,25'), 1.25);
+    assert.equal(parseStep('0.5'), 0.5);
+    assert.equal(parseStep('0'), null);
+    assert.equal(parseStep(''), null);
+    assert.equal(parseStep('abc'), null);
+    assert.equal(parseStep('80'), null);
   });
 });

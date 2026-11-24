@@ -361,6 +361,11 @@ export async function updateExercise(db: Db, id: string, patch: { name: string; 
   );
 }
 
+/** Muda só o passo do −/+ do exercício (vale para este e os próximos treinos). */
+export async function setExerciseStep(db: Db, id: string, stepKg: number) {
+  await db.runAsync(`UPDATE exercise SET step_kg = ?, updated_at = ? WHERE id = ?`, stepKg, nowIso(), id);
+}
+
 /** Onde o exercício aparece na pasta em uso: como principal (com o descanso recomendado) ou substituto. */
 export function exerciseUsage(db: Db, exerciseId: string) {
   return db.getAllAsync<{ slot_id: string; code: string; rest_sec: number; as_main: number }>(

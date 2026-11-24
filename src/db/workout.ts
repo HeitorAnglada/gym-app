@@ -53,6 +53,8 @@ export interface WorkoutExerciseRow {
   exercise_id: string;
   name: string;
   step_kg: number;
+  muscle_group: string;
+  builtin_key: string | null;
   sort: number;
   status: ExerciseStatus;
   note: string | null;
@@ -97,7 +99,7 @@ export async function loadWorkout(db: Db, id: string): Promise<WorkoutData | nul
   const workout = await db.getFirstAsync<WorkoutRow>(`${workoutSelect} WHERE w.id = ? AND w.${alive}`, id);
   if (!workout) return null;
   const exercises = await db.getAllAsync<Omit<WorkoutExerciseRow, 'sets'>>(
-    `SELECT we.id, we.workout_id, we.slot_id, we.exercise_id, e.name, e.step_kg, we.sort, we.status, we.note,
+    `SELECT we.id, we.workout_id, we.slot_id, we.exercise_id, e.name, e.step_kg, e.muscle_group, e.builtin_key, we.sort, we.status, we.note,
        COALESCE(we.sets_min, 3) AS sets_min, COALESCE(we.sets_max, 3) AS sets_max,
        COALESCE(we.reps_min, 8) AS reps_min, COALESCE(we.reps_max, 12) AS reps_max,
        COALESCE(we.rest_sec, 90) AS rest_sec, we.sets_adjust, we.next_load, we.next_reps, we.initial_load,
