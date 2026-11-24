@@ -97,7 +97,7 @@ export default function Ficha() {
             }}
           />
         </Field>
-        <Muted style={{ fontSize: 12 }}>O dia é só um lembrete. O próximo treino segue a sequência da pasta.</Muted>
+        <Muted style={{ fontSize: 12 }}>O dia é só um lembrete. O próximo treino segue a sequência da ficha.</Muted>
 
         <View style={st.top}>
           <Text style={s.label}>exercícios · {slots.length}</Text>

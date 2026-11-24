@@ -174,7 +174,7 @@ export function AddButton({ title, onPress }: { title: string; onPress: () => vo
   );
 }
 
-/** Botão flutuante ("+ pasta", "+ ficha"). */
+/** Botão flutuante ("+ ficha", "+ treino"). */
 export function Fab({ title, onPress }: { title: string; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [s.fab, pressed && { opacity: 0.85 }]} accessibilityRole="button">

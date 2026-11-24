@@ -6,7 +6,7 @@ import { Alert, AppState, Pressable, ScrollView, StyleSheet, View } from 'react-
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 
-import { listSubstitutes } from '../db/editing.ts';
+import { listSubstitutes, setExerciseStep } from '../db/editing.ts';
 import { getSettings, type Settings } from '../db/settings.ts';
 import {
   addSet, changeRest, currentExercise, endSet, goToExercise, moveOn, nextValues, removeSet, setNext, startSet, targetOf, toggleSkip,
@@ -16,16 +16,17 @@ import {
   type ExerciseOutlook, type SetRow, type WorkoutData, type WorkoutExerciseRow,
 } from '../db/workout.ts';
 import { dayMonth } from '../domain/dates.ts';
-import { formatLoad } from '../domain/editing.ts';
+import { formatLoad, parseLoad, parseStep, STEP_OPTIONS } from '../domain/editing.ts';
 import { addLoad } from '../domain/progression.ts';
 import { formatClock } from '../domain/rest.ts';
 import { afterSet, describeSets, nextPending, plannedSets } from '../domain/session.ts';
 import { askPermission, buzz, cancelRestEnd, clearOngoing, restEndNow, scheduleRestEnd, setupAlerts, showOngoing } from '../ui/alerts.ts';
-import { BigButton, Field, Input, Label, LinkText, Muted, Option, Sheet, SheetActions, Stepper, s } from '../ui/components.tsx';
+import { BigButton, Chips, Field, Input, Label, LinkText, Muted, Option, Sheet, SheetActions, Stepper, s } from '../ui/components.tsx';
+import { MovementAnimation } from '../ui/MovementAnimation.tsx';
 import { colors, fonts, radius } from '../ui/theme.ts';
 import { Text } from '../ui/text.tsx';
 
-type SheetName = null | 'lista' | 'trocar' | 'menu' | 'nota' | 'descanso' | { set: SetRow; step: number };
+type SheetName = null | 'lista' | 'trocar' | 'menu' | 'nota' | 'descanso' | 'carga' | { set: SetRow; step: number };
 
 interface SwapOption {
   exerciseId: string;
@@ -58,6 +59,9 @@ export default function Treino() {
   const [noteText, setNoteText] = useState('');
   const [restEdit, setRestEdit] = useState(90);
   const [setEdit, setSetEdit] = useState({ load: 0, reps: 0 });
+  const [loadText, setLoadText] = useState('');
+  const [stepText, setStepText] = useState('');
+  const [showMove, setShowMove] = useState(false);
   /** Descanso (início|alvo) que já teve aviso com a tela aberta. */
   const alerted = useRef<string | null>(null);
   const permission = useRef(false);
@@ -343,8 +347,9 @@ export default function Treino() {
             {following ? <>próximo <Text style={st.nextName}>{following.name}</Text></> : 'último exercício'}
           </Text>
           <Text style={st.clock}>{clockLong(elapsed(workout.started_at, now))}</Text>
-          <Pressable hitSlop={12} onPress={() => setSheet('menu')} accessibilityLabel="Menu do treino">
-            <Text style={st.dots3}>⋯</Text>
+          <Pressable hitSlop={8} onPress={() => setSheet('menu')} accessibilityLabel="Opções do treino" style={({ pressed }) => [st.menuBtn, pressed && { opacity: 0.8 }]}>
+            <Text style={st.menuDots}>⋯</Text>
+            <Text style={st.menuText}>opções</Text>
           </Pressable>
         </View>
 
@@ -373,6 +378,8 @@ export default function Treino() {
                   </Text>
                 </View>
               )}
+              <LinkText muted={showMove} onPress={() => setShowMove((v) => !v)}>{showMove ? 'esconder movimento' : '▶ ver movimento'}</LinkText>
+              {showMove && <MovementAnimation name={current.name} muscle={current.muscle_group} builtinKey={current.builtin_key} />}
               {outlook?.prefill.increased && done === 0 && (
                 <Text style={[st.chip, { color: colors.green, backgroundColor: colors.greenBg }]}>⬆ subir carga · bateu {current.reps_max} em tudo</Text>
               )}
@@ -412,7 +419,12 @@ export default function Treino() {
                   <BigStepper
                     value={formatLoad(nextLoad)}
                     unit="kg"
-                    label={`carga · passo ${formatLoad(current.step_kg)} kg`}
+                    label={`passo ${formatLoad(current.step_kg)} kg · toque para mudar`}
+                    onPressValue={() => {
+                      setLoadText(formatLoad(nextLoad));
+                      setStepText(formatLoad(current.step_kg));
+                      setSheet('carga');
+                    }}
                     onMinus={() => changeValue(addLoad(nextLoad, -current.step_kg), nextReps)}
                     onPlus={() => changeValue(addLoad(nextLoad, current.step_kg), nextReps)}
                   />
@@ -524,6 +536,32 @@ export default function Treino() {
         <Option title="Cancelar treino" detail="apaga este treino, nada fica no histórico" danger onPress={cancelWorkout} />
       </Sheet>
 
+      <Sheet visible={sheet === 'carga'} onClose={() => setSheet(null)} title="Carga e passo" subtitle={current?.name}>
+        <Field label="carga desta série (kg)">
+          <Input value={loadText} onChangeText={setLoadText} keyboardType="decimal-pad" placeholder="ex.: 22,5" selectTextOnFocus error={parseLoad(loadText) === 'invalid'} />
+        </Field>
+        <Field label="passo do − e +">
+          <Chips items={STEP_OPTIONS} value={parseStep(stepText) as (typeof STEP_OPTIONS)[number] | null} label={(v) => `${formatLoad(v)} kg`} onChange={(v) => setStepText(formatLoad(v))} />
+          <Input value={stepText} onChangeText={setStepText} keyboardType="decimal-pad" placeholder="outro passo, ex.: 1,5" error={!!stepText.trim() && parseStep(stepText) == null} />
+        </Field>
+        <Muted style={{ fontSize: 12 }}>O passo fica salvo neste exercício e vale nos próximos treinos.</Muted>
+        <SheetActions
+          confirm="Salvar"
+          disabled={parseLoad(loadText) === 'invalid' || parseStep(stepText) == null}
+          onCancel={() => setSheet(null)}
+          onConfirm={() => {
+            const load = parseLoad(loadText);
+            const step = parseStep(stepText);
+            setSheet(null);
+            if (!current || load === 'invalid' || step == null) return;
+            act(async () => {
+              if (step !== current.step_kg) await setExerciseStep(db, current.exercise_id, step);
+              if ((load ?? 0) !== nextLoad) await setNext(db, current, load ?? 0, nextReps);
+            });
+          }}
+        />
+      </Sheet>
+
       <Sheet visible={sheet === 'nota'} onClose={() => setSheet(null)} title="Observação" subtitle={current?.name}>
         <Input value={noteText} onChangeText={setNoteText} placeholder="ex.: banco no 3, pegada aberta" autoFocus multiline maxLength={200} />
         <SheetActions confirm="Salvar" onCancel={() => setSheet(null)} onConfirm={() => { setSheet(null); if (current) act(() => setExerciseNote(db, current.id, noteText)); }} />
@@ -531,7 +569,7 @@ export default function Treino() {
 
       <Sheet visible={sheet === 'descanso'} onClose={() => setSheet(null)} title="Descanso" subtitle="só neste treino">
         <Stepper value={formatClock(restEdit)} onMinus={() => setRestEdit((v) => Math.max(15, v - 15))} onPlus={() => setRestEdit((v) => Math.min(600, v + 15))} />
-        <Muted style={{ fontSize: 12 }}>Para mudar de vez, ajuste na ficha ou na página do exercício.</Muted>
+        <Muted style={{ fontSize: 12 }}>Para mudar de vez, ajuste no treino da ficha ou na página do exercício.</Muted>
         <SheetActions
           confirm="Salvar"
           onCancel={() => setSheet(null)}
@@ -587,18 +625,18 @@ function Dots({ done, min, max, label }: { done: number; min: number; max: numbe
   );
 }
 
-function BigStepper({ value, unit, label, onMinus, onPlus }: { value: string; unit: string; label: string; onMinus: () => void; onPlus: () => void }) {
+function BigStepper({ value, unit, label, onMinus, onPlus, onPressValue }: { value: string; unit: string; label: string; onMinus: () => void; onPlus: () => void; onPressValue?: () => void }) {
   return (
     <View style={st.big}>
       <Pressable onPress={onMinus} style={st.bigBtn} accessibilityLabel={`Menos ${unit}`}>
         <Text style={st.bigSign}>−</Text>
       </Pressable>
-      <View style={{ flex: 1, alignItems: 'center' }}>
+      <Pressable style={{ flex: 1, alignItems: 'center' }} onPress={onPressValue} disabled={!onPressValue} accessibilityLabel={onPressValue ? `${value} ${unit}, ${label}` : undefined}>
         <Text style={st.bigVal}>
           {value}<Text style={st.bigUnit}> {unit}</Text>
         </Text>
-        <Text style={st.bigLabel}>{label}</Text>
-      </View>
+        <Text style={[st.bigLabel, onPressValue && { color: colors.lilac }]}>{label}</Text>
+      </Pressable>
       <Pressable onPress={onPlus} style={st.bigBtn} accessibilityLabel={`Mais ${unit}`}>
         <Text style={st.bigSign}>+</Text>
       </Pressable>
@@ -645,7 +683,9 @@ const st = StyleSheet.create({
   nextTop: { flex: 1, fontFamily: fonts.text, fontSize: 12, color: colors.text2 },
   nextName: { fontFamily: fonts.textSemi, color: colors.text },
   clock: { fontFamily: fonts.num, fontSize: 14, color: colors.text, fontVariant: ['tabular-nums'] },
-  dots3: { color: colors.lilac, fontSize: 22, lineHeight: 22 },
+  menuBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.acaiBg, borderColor: colors.acai, borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
+  menuDots: { color: colors.lilac, fontSize: 18, lineHeight: 18 },
+  menuText: { fontFamily: fonts.textSemi, color: colors.lilac, fontSize: 13 },
   name: { fontFamily: fonts.num, fontSize: 28, letterSpacing: -0.8, color: colors.text },
   swap: { fontFamily: fonts.textSemi, fontSize: 13, color: colors.lilac },
   last: { backgroundColor: colors.card, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },

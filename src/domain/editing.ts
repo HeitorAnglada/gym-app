@@ -16,9 +16,9 @@ export function nextRoutineCode(existing: string[]): string {
 /** Erro para mostrar na tela, ou null quando a letra pode ser usada. */
 export function routineCodeError(code: string, otherCodes: string[]): string | null {
   const c = norm(code);
-  if (!c) return 'A ficha precisa de uma letra.';
+  if (!c) return 'O treino precisa de uma letra.';
   if (c.length > 4) return 'Use até 4 caracteres.';
-  if (otherCodes.map(norm).includes(c)) return `Já existe uma ficha ${c} nesta pasta.`;
+  if (otherCodes.map(norm).includes(c)) return `Já existe um treino ${c} nesta ficha.`;
   return null;
 }
 
@@ -65,6 +65,16 @@ export function parseLoad(text: string): number | null | 'invalid' {
   const n = Number(t);
   if (!Number.isFinite(n) || n < 0 || n > 1000) return 'invalid';
   return Math.round(n * 100) / 100;
+}
+
+/** Passos oferecidos na tela do treino. Polia e máquina costumam ter placas pequenas (0,5 / 1 / 1,25 kg). */
+export const STEP_OPTIONS = [0.5, 1, 1.25, 2, 2.5, 5] as const;
+
+/** Lê um passo digitado: maior que zero e até 50 kg. */
+export function parseStep(text: string): number | null {
+  const v = parseLoad(text);
+  if (v === 'invalid' || v == null || v <= 0 || v > 50) return null;
+  return v;
 }
 
 export function formatLoad(kg: number): string {

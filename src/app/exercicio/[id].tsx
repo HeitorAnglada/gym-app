@@ -15,6 +15,7 @@ import { roundRest, thousands } from '../../domain/session.ts';
 import { records, topLoad, volume } from '../../domain/stats.ts';
 import { Chips, Field, Input, LinkText, Muted, Sheet, SheetActions, s } from '../../ui/components.tsx';
 import { EQUIPMENT_LABEL } from '../../ui/CreateExerciseSheet.tsx';
+import { MovementAnimation } from '../../ui/MovementAnimation.tsx';
 import { colors, fonts } from '../../ui/theme.ts';
 import { Text } from '../../ui/text.tsx';
 
@@ -67,6 +68,8 @@ export default function Exercicio() {
           {MUSCLE_LABEL[ex.muscle_group].toLowerCase()} · {EQUIPMENT_LABEL[ex.equipment].toLowerCase()} · passo {formatLoad(ex.step_kg)} kg · feito {sessions.length}×
         </Muted>
 
+        <MovementAnimation name={ex.name} muscle={ex.muscle_group} builtinKey={ex.builtin_key} />
+
         {sessions.length === 0 ? (
           <View style={st.empty}><Muted>Ainda sem treinos com este exercício. O gráfico e os recordes aparecem depois do primeiro.</Muted></View>
         ) : (
@@ -95,7 +98,7 @@ export default function Exercicio() {
                   ) : undefined
                 }
               />
-              <KV label="usado em" value={usage.length ? [...new Set(usage.map((u) => u.code))].join(', ') : 'nenhuma ficha em uso'} />
+              <KV label="usado em" value={usage.length ? [...new Set(usage.map((u) => u.code))].join(', ') : 'fora da ficha em uso'} />
             </View>
           </>
         )}

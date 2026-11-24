@@ -69,7 +69,7 @@ export default function Historico() {
           })}
         </View>
         {rows.length === 0 ? (
-          <EmptyState title="Nenhum treino neste mês" body="Cada treino finalizado aparece aqui, com a letra da ficha no dia." />
+          <EmptyState title="Nenhum treino neste mês" body="Cada treino finalizado aparece aqui, com a letra do treino no dia." />
         ) : (
           rows.map((w) => {
             const d = new Date(w.started_at);

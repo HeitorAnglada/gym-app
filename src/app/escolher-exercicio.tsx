@@ -100,7 +100,7 @@ export default function EscolherExercicio() {
   };
 
   const title = {
-    adicionar: `adicionar à ${code}`,
+    adicionar: `adicionar ao ${code}`,
     substituto: 'escolher substituto',
     principal: 'trocar principal',
     extra: 'extra · só hoje',
@@ -125,7 +125,7 @@ export default function EscolherExercicio() {
           <View key={group}>
             <Label>{MUSCLE_LABEL[group as MuscleGroup]}</Label>
             {rows.map((r) => {
-              const here = inSlot.has(r.id) ? 'já neste exercício' : inRoutine.has(r.id) ? `já na ${code}` : null;
+              const here = inSlot.has(r.id) ? 'já neste exercício' : inRoutine.has(r.id) ? `já no ${code}` : null;
               return (
                 <Pressable key={r.id} onPress={() => pick(r.id)} style={({ pressed }) => [st.row, pressed && { opacity: 0.6 }]}>
                   <View style={{ flex: 1 }}>

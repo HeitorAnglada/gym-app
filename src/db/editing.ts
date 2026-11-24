@@ -151,7 +151,7 @@ export async function renameProgram(db: Db, id: string, name: string) {
 
 export async function duplicateProgram(db: Db, id: string): Promise<string> {
   const p = await db.getFirstAsync<{ name: string }>(`SELECT name FROM program WHERE id = ?`, id);
-  return createProgram(db, copyName(p?.name ?? 'Pasta', await programNames(db)), id);
+  return createProgram(db, copyName(p?.name ?? 'Ficha', await programNames(db)), id);
 }
 
 /** Apaga a pasta e as fichas dela. A pasta em uso não pode ser apagada (a tela não oferece). */
@@ -192,7 +192,7 @@ export async function updateRoutine(db: Db, id: string, patch: Partial<Pick<Rout
 /** Copia a ficha para o fim da mesma pasta, com a próxima letra livre. */
 export async function duplicateRoutine(db: Db, id: string): Promise<string> {
   const r = await db.getFirstAsync<{ program_id: string }>(`SELECT program_id FROM routine WHERE id = ?`, id);
-  if (!r) throw new Error('Ficha não encontrada.');
+  if (!r) throw new Error('Treino não encontrado.');
   const code = nextRoutineCode(await routineCodesInProgram(db, r.program_id));
   const sort = await db.getFirstAsync<{ m: number | null }>(`SELECT MAX(sort) AS m FROM routine WHERE program_id = ? AND ${alive}`, r.program_id);
   let newRoutineId = '';
@@ -312,7 +312,7 @@ async function copyRoutine(tx: Db, routineId: string, programId: string, code: s
   const r = await tx.getFirstAsync<{ code: string; name: string; suggested_weekday: number | null }>(
     `SELECT code, name, suggested_weekday FROM routine WHERE id = ?`, routineId,
   );
-  if (!r) throw new Error('Ficha não encontrada.');
+  if (!r) throw new Error('Treino não encontrado.');
   const rid = newId();
   await tx.runAsync(
     `INSERT INTO routine (id, created_at, updated_at, program_id, code, name, suggested_weekday, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -359,6 +359,11 @@ export async function updateExercise(db: Db, id: string, patch: { name: string; 
     `UPDATE exercise SET name = ?, muscle_group = ?, step_kg = ?, updated_at = ? WHERE id = ?`,
     patch.name.trim(), patch.muscle_group, patch.step_kg, nowIso(), id,
   );
+}
+
+/** Muda só o passo do −/+ do exercício (vale para este e os próximos treinos). */
+export async function setExerciseStep(db: Db, id: string, stepKg: number) {
+  await db.runAsync(`UPDATE exercise SET step_kg = ?, updated_at = ? WHERE id = ?`, stepKg, nowIso(), id);
 }
 
 /** Onde o exercício aparece na pasta em uso: como principal (com o descanso recomendado) ou substituto. */
