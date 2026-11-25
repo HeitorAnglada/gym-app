@@ -1,7 +1,7 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { deleteSet, deleteWorkout, loadWorkout, setWorkoutNote, updateSet, type SetRow, type WorkoutData, type WorkoutExerciseRow } from '../../db/workout.ts';
@@ -13,6 +13,7 @@ import { Field, Input, LinkText, Muted, Sheet, SheetActions, Stepper, s } from '
 import { colors, fonts } from '../../ui/theme.ts';
 import { SummaryList, SummaryNumbers, useProgressMarks } from '../../ui/WorkoutSummary.tsx';
 import { Text } from '../../ui/text.tsx';
+import { showDialog } from '../../ui/dialog.tsx';
 
 /** Detalhe de um treino do histórico. Editável até 7 dias depois; depois fica travado. */
 export default function Sessao() {
@@ -75,7 +76,7 @@ export default function Sessao() {
           <LinkText
             muted
             onPress={() =>
-              Alert.alert('Apagar este treino?', 'Ele sai do histórico, do calendário e dos gráficos.', [
+              showDialog('Apagar este treino?', 'Ele sai do histórico, do calendário e dos gráficos.', [
                 { text: 'Cancelar', style: 'cancel' },
                 { text: 'Apagar', style: 'destructive', onPress: async () => { await deleteWorkout(db, w.id); router.back(); } },
               ])

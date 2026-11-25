@@ -1,7 +1,7 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -13,6 +13,7 @@ import { defaultRestSeconds, formatClock } from '../../../domain/rest.ts';
 import { AddButton, Field, Input, LinkText, Muted, Sheet, SheetActions, Stepper, Toggle, s } from '../../../ui/components.tsx';
 import { colors, fonts } from '../../../ui/theme.ts';
 import { Text } from '../../../ui/text.tsx';
+import { showDialog } from '../../../ui/dialog.tsx';
 
 /** Alvo da gaveta de carga inicial: o principal (slot) ou um substituto. */
 type LoadTarget = { kind: 'main' } | { kind: 'sub'; sub: SubstituteRow };
@@ -83,7 +84,7 @@ export default function ExercicioDaFicha() {
   };
 
   const remove = () =>
-    Alert.alert(`Tirar ${slot.main_name} do ${slot.routine_code}?`, 'Os treinos já feitos com ele continuam no histórico.', [
+    showDialog(`Tirar ${slot.main_name} do ${slot.routine_code}?`, 'Os treinos já feitos com ele continuam no histórico.', [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Remover', style: 'destructive', onPress: async () => { await deleteSlot(db, slot.id); router.back(); } },
     ]);
