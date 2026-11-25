@@ -12,6 +12,7 @@ import { useEffect } from 'react';
 
 import { DATABASE_NAME, initDatabase } from '../db/index.ts';
 import { getSettings } from '../db/settings.ts';
+import { DialogHost } from '../ui/dialog.tsx';
 import { setFontScale } from '../ui/text.tsx';
 import { colors } from '../ui/theme.ts';
 
@@ -39,6 +40,7 @@ export default function RootLayout() {
         <FontScaleFromSettings />
         <StatusBar style="light" />
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }} />
+        <DialogHost />
       </SQLiteProvider>
     </ThemeProvider>
   );

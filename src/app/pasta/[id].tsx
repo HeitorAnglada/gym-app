@@ -1,7 +1,7 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createRoutine, deleteProgram, deleteRoutine, duplicateProgram, duplicateRoutine, renameProgram, reorderRoutines } from '../../db/editing.ts';
@@ -12,6 +12,7 @@ import { BigButton, Card, EmptyState, Fab, Field, Input, LinkText, Muted, Option
 import { Icon } from '../../ui/icons.tsx';
 import { colors, fonts } from '../../ui/theme.ts';
 import { Text } from '../../ui/text.tsx';
+import { showDialog } from '../../ui/dialog.tsx';
 
 type SheetName = null | 'usar' | 'menu' | 'renomear' | { routine: RoutineRow };
 
@@ -59,7 +60,7 @@ export default function Pasta() {
 
   const confirmDeleteRoutine = (r: RoutineRow) => {
     setSheet(null);
-    Alert.alert(`Apagar o treino ${r.code}?`, 'Ele sai da sequência. Os treinos já feitos com ele continuam no histórico.', [
+    showDialog(`Apagar o treino ${r.code}?`, 'Ele sai da sequência. Os treinos já feitos com ele continuam no histórico.', [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Apagar', style: 'destructive', onPress: async () => { await deleteRoutine(db, r.id); load(); } },
     ]);
@@ -67,7 +68,7 @@ export default function Pasta() {
 
   const confirmDeleteProgram = () => {
     setSheet(null);
-    Alert.alert(`Apagar a ficha ${program.name}?`, 'Os treinos dela somem da lista. O que já foi feito continua no histórico.', [
+    showDialog(`Apagar a ficha ${program.name}?`, 'Os treinos dela somem da lista. O que já foi feito continua no histórico.', [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Apagar', style: 'destructive', onPress: async () => { await deleteProgram(db, program.id); router.back(); } },
     ]);

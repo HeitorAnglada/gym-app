@@ -2,7 +2,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { AppState, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 
@@ -25,6 +25,7 @@ import { BigButton, Chips, Field, Input, Label, LinkText, Muted, Option, Sheet, 
 import { MovementAnimation } from '../ui/MovementAnimation.tsx';
 import { colors, fonts, radius } from '../ui/theme.ts';
 import { Text } from '../ui/text.tsx';
+import { showDialog } from '../ui/dialog.tsx';
 
 type SheetName = null | 'lista' | 'trocar' | 'menu' | 'nota' | 'descanso' | 'carga' | { set: SetRow; step: number };
 
@@ -81,7 +82,7 @@ export default function Treino() {
       try {
         await fn();
       } catch (e) {
-        Alert.alert('Não consegui salvar', (e as Error).message);
+        showDialog('Não consegui salvar', (e as Error).message);
       } finally {
         await reload().catch(() => {});
         busy.current = false;
@@ -227,7 +228,7 @@ export default function Treino() {
 
   const goTo = (we: WorkoutExerciseRow) => {
     if (workout.phase === 'serie') {
-      Alert.alert('Série em andamento', 'Termine a série (Iniciar descanso) antes de trocar de exercício.');
+      showDialog('Série em andamento', 'Termine a série (Iniciar descanso) antes de trocar de exercício.');
       return;
     }
     setSheet(null);
@@ -247,13 +248,13 @@ export default function Treino() {
         await clearOngoing();
         router.replace({ pathname: '/fim/[id]', params: { id: workout.id } });
       } catch (e) {
-        Alert.alert('Não consegui finalizar', (e as Error).message);
+        showDialog('Não consegui finalizar', (e as Error).message);
       } finally {
         busy.current = false;
       }
     };
     if (pending === 0) return go();
-    Alert.alert('Finalizar treino?', `${pending} ${pending === 1 ? 'exercício ainda não foi feito e vai' : 'exercícios ainda não foram feitos e vão'} como pulado.`, [
+    showDialog('Finalizar treino?', `${pending} ${pending === 1 ? 'exercício ainda não foi feito e vai' : 'exercícios ainda não foram feitos e vão'} como pulado.`, [
       { text: 'Voltar', style: 'cancel' },
       { text: 'Finalizar', onPress: go },
     ]);
@@ -263,7 +264,7 @@ export default function Treino() {
   const cancelWorkout = () => {
     setSheet(null);
     const sets = allSets.length;
-    Alert.alert(
+    showDialog(
       'Cancelar este treino?',
       sets > 0
         ? `${sets} ${sets === 1 ? 'série registrada hoje vai ser apagada' : 'séries registradas hoje vão ser apagadas'}. Nada deste treino fica no histórico.`
@@ -282,7 +283,7 @@ export default function Treino() {
               await clearOngoing();
               router.replace('/');
             } catch (e) {
-              Alert.alert('Não consegui cancelar', (e as Error).message);
+              showDialog('Não consegui cancelar', (e as Error).message);
             } finally {
               busy.current = false;
             }
@@ -295,11 +296,11 @@ export default function Treino() {
   const openSwap = async () => {
     if (!current) return;
     if (current.sets.length > 0) {
-      Alert.alert('Já tem série feita', 'Para trocar, use a lista do treino e adicione o outro exercício como extra.');
+      showDialog('Já tem série feita', 'Para trocar, use a lista do treino e adicione o outro exercício como extra.');
       return;
     }
     if (workout.phase === 'serie') {
-      Alert.alert('Série em andamento', 'Termine a série (Iniciar descanso) antes de trocar o exercício.');
+      showDialog('Série em andamento', 'Termine a série (Iniciar descanso) antes de trocar o exercício.');
       return;
     }
     const opts: SwapOption[] = [];
@@ -494,7 +495,7 @@ export default function Treino() {
           onCancel={() => {
             setSheet(null);
             if (workout.phase === 'serie') {
-              Alert.alert('Série em andamento', 'Termine a série (Iniciar descanso) antes de adicionar um exercício.');
+              showDialog('Série em andamento', 'Termine a série (Iniciar descanso) antes de adicionar um exercício.');
               return;
             }
             router.push({ pathname: '/escolher-exercicio', params: { modo: 'extra', treino: workout.id } });

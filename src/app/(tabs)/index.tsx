@@ -1,7 +1,7 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getNextRoutine, listRoutines, listWorkouts, type RoutineRow, type WorkoutListRow } from '../../db/queries.ts';
@@ -14,6 +14,7 @@ import { Icon } from '../../ui/icons.tsx';
 import { NewProgramSheet } from '../../ui/NewProgramSheet.tsx';
 import { colors, fonts } from '../../ui/theme.ts';
 import { Text } from '../../ui/text.tsx';
+import { showDialog } from '../../ui/dialog.tsx';
 
 type Next = Awaited<ReturnType<typeof getNextRoutine>>;
 
@@ -190,7 +191,7 @@ export default function Inicio() {
               <LinkText
                 muted
                 onPress={() =>
-                  Alert.alert(`Finalizar o ${ow.routine_code ?? 'treino'} como está?`, 'O que você já fez fica no histórico; o resto vai como pulado.', [
+                  showDialog(`Finalizar o ${ow.routine_code ?? 'treino'} como está?`, 'O que você já fez fica no histórico; o resto vai como pulado.', [
                     { text: 'Voltar', style: 'cancel' },
                     {
                       text: 'Finalizar',
@@ -208,7 +209,7 @@ export default function Inicio() {
               <LinkText
                 muted
                 onPress={() =>
-                  Alert.alert('Descartar o treino aberto?', 'Nada dele fica no histórico.', [
+                  showDialog('Descartar o treino aberto?', 'Nada dele fica no histórico.', [
                     { text: 'Voltar', style: 'cancel' },
                     { text: 'Descartar', style: 'destructive', onPress: async () => { await deleteWorkout(db, ow.id); await clearOngoing(); setTick((n) => n + 1); } },
                   ])
