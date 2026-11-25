@@ -379,7 +379,7 @@ export default function Treino() {
                 </View>
               )}
               <LinkText muted={showMove} onPress={() => setShowMove((v) => !v)}>{showMove ? 'esconder movimento' : '▶ ver movimento'}</LinkText>
-              {showMove && <MovementAnimation name={current.name} muscle={current.muscle_group} builtinKey={current.builtin_key} />}
+              {showMove && <MovementAnimation name={current.name} muscle={current.muscle_group} builtinKey={current.builtin_key} compact />}
               {outlook?.prefill.increased && done === 0 && (
                 <Text style={[st.chip, { color: colors.green, backgroundColor: colors.greenBg }]}>⬆ subir carga · bateu {current.reps_max} em tudo</Text>
               )}

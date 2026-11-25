@@ -11,7 +11,7 @@ describe('animação dos exercícios', () => {
 
   test('pelo nome, com acento ou não, e pelo grupo quando o nome não ajuda', () => {
     assert.equal(movementFor('Crossover na polia média/alta', 'peito'), 'crossover');
-    assert.equal(movementFor('Supino inclinado com halteres', 'peito'), 'supino');
+    assert.equal(movementFor('Supino reto com halteres', 'peito'), 'supino');
     assert.equal(movementFor('Tríceps testa (barra W ou halteres)', 'triceps'), 'tricepsTesta');
     assert.equal(movementFor('Triceps corda na polia', 'triceps'), 'tricepsPolia');
     assert.equal(movementFor('Flexão de braço', 'peito'), 'flexao');
