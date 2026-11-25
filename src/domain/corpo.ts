@@ -158,7 +158,7 @@ const SIDE_MAP: Partial<Record<MuscleId, Belly[]>> = {
   triceps: [['uarm', 0.12, 0.86, -2.5, -2.5, 2.6, 4.8]],
   antebraco: [['farm', 0.02, 0.62, 0, 0, 4.2, 3.8]],
   quadriceps: [['thigh', 0.08, 0.92, 3, 2.5, 6.5, 4.5]],
-  posterior: [['thigh', 0.14, 0.9, -3, -2, 4.5, 6]],
+  posterior: [['thigh', 0.14, 0.9, -4, -3, 2.5, 5.5]],
   gluteo: [['thigh', -0.3, 0.3, -5, -4.5, 3.5, 7.5]],
   panturrilha: [['shin', 0.05, 0.58, -2.4, -2.4, 2.8, 5.2]],
 };

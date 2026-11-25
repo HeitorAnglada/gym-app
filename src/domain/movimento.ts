@@ -517,7 +517,43 @@ const PEAK_A: MovementName[] = ['flexao', 'paralelas', 'terra', 'agachamento'];
 /** De frente, mas o que trabalha está nas costas: mostra o corpo de costas. */
 const FROM_BACK: MovementName[] = ['puxada', 'barraFixa'];
 
+/**
+ * De bruços (flexão, prancha, serrote): os desenhos foram feitos com a cabeça à esquerda, mas
+ * de lado o corpo sempre olha para a direita (é isso que diz onde fica a frente: peito, bíceps,
+ * quadríceps). Espelhar põe a cabeça à direita e o peito virado para o chão, como deve ser.
+ */
+const FACE_DOWN: MovementName[] = ['flexao', 'prancha', 'remadaUnilateral'];
+
+function flipPose(p: Pose): Pose {
+  return {
+    torso: mirror(p.torso), uarm: mirror(p.uarm), farm: mirror(p.farm), thigh: mirror(p.thigh), shin: mirror(p.shin),
+    foot: mirror(p.foot ?? 0), lift: p.lift,
+  };
+}
+
+function flipX(m: Movement): void {
+  const fx = (x: number) => VIEW.w - x;
+  const fp = (q: Pt): Pt => [fx(q[0]), q[1]];
+  m.a = flipPose(m.a);
+  m.b = flipPose(m.b);
+  if (m.far) {
+    const f = m.far;
+    m.far = Object.fromEntries(Object.entries(f).map(([k, v]) => [k, k === 'lift' ? v : mirror(v as number)])) as Partial<Pose>;
+  }
+  if (m.at[0] != null) m.at = [fx(m.at[0]), m.at[1]];
+  m.props = m.props?.map((pr) => {
+    switch (pr.kind) {
+      case 'line': case 'slab': return { ...pr, from: fp(pr.from), to: fp(pr.to) };
+      case 'cable': return { ...pr, from: fp(pr.from) };
+      case 'rect': return { ...pr, x: fx(pr.x + pr.w) };
+      case 'plate': return { ...pr, angle: mirror(pr.angle) };
+      default: return pr;
+    }
+  });
+}
+
 for (const [k, mv] of Object.entries(MOVEMENTS) as [MovementName, Movement][]) {
+  if (FACE_DOWN.includes(k)) flipX(mv);
   mv.muscles = WORK[k];
   if (PEAK_A.includes(k)) mv.peak = 'a';
   if (FROM_BACK.includes(k)) mv.back = true;

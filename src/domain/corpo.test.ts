@@ -3,7 +3,7 @@ import { describe, test } from 'node:test';
 
 import { CATALOG } from '../data/catalog.ts';
 import { bodyMap, fitBox, sceneAt } from './corpo.ts';
-import { movementFor, MOVEMENTS, poseT, tempo, tempoPhase, variantFor, WORK, type Movement } from './movimento.ts';
+import { movementFor, MOVEMENTS, skeletonAt, poseT, tempo, tempoPhase, variantFor, WORK, type Movement } from './movimento.ts';
 
 const entries = Object.entries(MOVEMENTS) as [keyof typeof MOVEMENTS, Movement][];
 
@@ -68,6 +68,22 @@ describe('corpo e músculos da animação', () => {
     for (const c of CATALOG) {
       const m = variantFor(movementFor(c.name, c.muscle)!, c.name);
       assert.ok(sceneAt(m, 0.5, { contraction: 0.5 }).length > 10, c.key);
+    }
+  });
+
+  test('de bruços (flexão, prancha, serrote) o peito fica virado para o chão', () => {
+    for (const k of ['flexao', 'prancha', 'remadaUnilateral'] as const) {
+      const m = MOVEMENTS[k] as Movement;
+      const sk = skeletonAt(m, 0.5);
+      // cabeça à direita = o corpo de lado olha para a direita, que é o que define onde fica a frente
+      assert.ok(sk.head[0] > sk.hip[0], `${k}: cabeça deveria ficar à direita`);
+      // o peitoral (ou abdômen) fica abaixo da linha quadril-ombro
+      const alvo: Movement = { ...m, muscles: { p: [k === 'prancha' ? 'abdomen' : 'peitoral'], s: [] } };
+      const lens = sceneAt(alvo, 0.5, { contraction: 1, props: false }).filter((s) => s.fill === '#9B55CC');
+      const ys = lens.flatMap((s) => [...s.d.matchAll(/-?\d+(?:\.\d+)?/g)].map((x) => +x[0]).filter((_, i) => i % 2 === 1));
+      const mid = ys.reduce((a, b) => a + b, 0) / ys.length;
+      const axis = (sk.hip[1] + sk.sh[1]) / 2;
+      assert.ok(mid > axis, `${k}: músculo da frente acima do tronco (${mid.toFixed(0)} vs ${axis.toFixed(0)})`);
     }
   });
 });
