@@ -9,7 +9,7 @@ import Svg, { Circle } from 'react-native-svg';
 import { listSubstitutes, setExerciseStep } from '../db/editing.ts';
 import { getSettings, type Settings } from '../db/settings.ts';
 import {
-  addSet, changeRest, currentExercise, endSet, goToExercise, moveOn, nextValues, removeSet, setNext, startSet, targetOf, toggleSkip,
+  addSet, changeRest, currentExercise, endSet, goToExercise, moveOn, nextValues, nudgeRunningRest, removeSet, setNext, startSet, targetOf, toggleSkip,
 } from '../db/treino.ts';
 import {
   deleteSet, deleteWorkout, exerciseOutlook, exerciseSessions, finishWorkout, loadWorkout, setExerciseNote, swapExercise, updateSet,
@@ -19,7 +19,7 @@ import { dayMonth } from '../domain/dates.ts';
 import { formatLoad, parseLoad, parseStep, STEP_OPTIONS } from '../domain/editing.ts';
 import { addLoad } from '../domain/progression.ts';
 import { formatClock } from '../domain/rest.ts';
-import { afterSet, describeSets, nextPending, plannedSets } from '../domain/session.ts';
+import { afterSet, describeSets, plannedSets, upcoming } from '../domain/session.ts';
 import { askPermission, buzz, cancelRestEnd, clearOngoing, restEndNow, scheduleRestEnd, setupAlerts, showOngoing } from '../ui/alerts.ts';
 import { BigButton, Chips, Field, Input, Label, LinkText, Muted, Option, Sheet, SheetActions, Stepper, s } from '../ui/components.tsx';
 import { MovementAnimation } from '../ui/MovementAnimation.tsx';
@@ -190,7 +190,6 @@ export default function Treino() {
   const doneCount = exercises.filter((e) => e.status !== 'pendente').length;
   // em qual exercício está (o mesmo número no rodapé, na lista e no início)
   const position = Math.min(doneCount + (current ? 1 : 0), total);
-  const following = current ? nextPending(exercises, current.id) : null;
   const planned = current ? plannedSets(current.sets_min, current.sets_max, current.sets_adjust) : { min: 0, max: 0 };
   const done = current?.sets.length ?? 0;
   const outcome = current ? afterSet(done, planned.min, planned.max) : 'completo';
@@ -339,18 +338,78 @@ export default function Treino() {
   const over = isRest && restTarget > 0 && restElapsed >= restTarget;
   const savedSet = lastLogged;
   const sameExercise = savedSet && current && savedSet.weId === current.id;
+  /** Tela entre exercícios: acabou um, o da tela ainda não tem série (e não está em série). */
+  const between = !!current && workout.phase !== 'serie' && done === 0 && allSets.length > 0;
+  const queue = current ? upcoming(exercises, current.id) : [];
+  const finished = savedSet ? exercises.find((e) => e.id === savedSet.weId) : undefined;
+  const alertOpts = settings && (settings.sound || settings.vibrate) ? { sound: settings.sound, vibrate: settings.vibrate } : null;
+
+  const doNudge = (delta: number) =>
+    act(async () => {
+      const r = await nudgeRunningRest(db, data, delta);
+      if (r && alertOpts) await scheduleRestEnd(r.left, r.target, current?.name ?? '', alertOpts);
+    });
+
+  const editSaved = () => {
+    if (!savedSet || !current) return;
+    setSetEdit({ load: savedSet.load, reps: savedSet.reps });
+    setSheet({ set: savedSet, step: exercises.find((e) => e.id === savedSet.weId)?.step_kg ?? current.step_kg });
+  };
+
+  const lastLine = current && outlook && (
+    <View style={[st.last, between && { backgroundColor: colors.card2 }]}>
+      <Text style={st.lastText}>
+        {outlook.last ? <>última vez ({dayMonth(new Date(outlook.last.date))}): <Text style={st.lastStrong}>{describeSets(outlook.last.sets)}</Text></> : current.initial_load != null ? <>primeira vez · carga inicial <Text style={st.lastStrong}>{formatLoad(current.initial_load)} kg</Text></> : 'primeira vez com este exercício'}
+      </Text>
+    </View>
+  );
+  const nextSetLine = (
+    <View style={[st.last, between && { backgroundColor: colors.card2 }]}>
+      <Text style={st.lastText}>
+        série {done + 1} vai com <Text style={st.lastStrong}>{nextLoad ? `${formatLoad(nextLoad)} kg × ${nextReps}` : `${nextReps} reps`}</Text> · ajuste ao iniciar
+      </Text>
+    </View>
+  );
+  const actions = current && (
+    <>
+      <View style={st.actions}>
+        <ActionButton icon="⇄" title="trocar exercício" onPress={openSwap} dim={done > 0} />
+        <ActionButton icon={showMove ? '■' : '▶'} title={showMove ? 'esconder movimento' : 'ver movimento'} onPress={() => setShowMove((v) => !v)} active={showMove} />
+      </View>
+      {showMove && <MovementAnimation name={current.name} muscle={current.muscle_group} builtinKey={current.builtin_key} compact />}
+    </>
+  );
+  const hints = current && (
+    <>
+      {outlook?.prefill.increased && done === 0 && (
+        <Text style={[st.chip, { color: colors.green, backgroundColor: colors.greenBg }]}>⬆ subir carga · bateu {current.reps_max} em tudo</Text>
+      )}
+      {outlook?.stalled && !outlook.prefill.increased && done === 0 && (
+        <Text style={[st.chip, { color: colors.yellow, backgroundColor: colors.yellowBg }]}>3 treinos sem progresso · tente +1 rep ou +1 passo</Text>
+      )}
+      {current.note ? <Muted style={{ fontSize: 12 }}>obs.: {current.note}</Muted> : null}
+    </>
+  );
+  const meta = current && (
+    <Muted>
+      {range(planned.min, planned.max)} × {range(current.reps_min, current.reps_max)} · descanso {formatClock(current.rest_sec)}
+      {outlook ? ` · feito ${outlook.timesDone}×` : ''}
+      {!current.slot_id ? ' · extra' : ''}
+    </Muted>
+  );
 
   return (
     <SafeAreaView style={s.screen}>
       <View style={st.wrap}>
         <View style={st.top}>
-          <Text style={st.nextTop} numberOfLines={1}>
-            {following ? <>próximo <Text style={st.nextName}>{following.name}</Text></> : 'último exercício'}
-          </Text>
+          <Pressable hitSlop={6} onPress={() => setSheet('lista')} accessibilityLabel="Lista de exercícios do treino" style={({ pressed }) => [st.pill, pressed && { opacity: 0.8 }]}>
+            <Text style={st.pillIcon}>≡</Text>
+            <Text style={st.pillText}>lista · {position} de {total}</Text>
+          </Pressable>
           <Text style={st.clock}>{clockLong(elapsed(workout.started_at, now))}</Text>
-          <Pressable hitSlop={8} onPress={() => setSheet('menu')} accessibilityLabel="Opções do treino" style={({ pressed }) => [st.menuBtn, pressed && { opacity: 0.8 }]}>
-            <Text style={st.menuDots}>⋯</Text>
-            <Text style={st.menuText}>opções</Text>
+          <Pressable hitSlop={6} onPress={() => setSheet('menu')} accessibilityLabel="Opções do treino" style={({ pressed }) => [st.pill, pressed && { opacity: 0.8 }]}>
+            <Text style={st.pillIcon}>⋯</Text>
+            <Text style={st.pillText}>opções</Text>
           </Pressable>
         </View>
 
@@ -360,59 +419,66 @@ export default function Treino() {
               <Text style={st.name}>Tudo feito<Text style={{ color: colors.acaiLight }}>.</Text></Text>
               <Muted>Todos os exercícios estão feitos ou pulados. Finalize pela lista, ou toque num exercício para fazer mais.</Muted>
             </View>
-          ) : (
+          ) : between ? (
             <>
-              <Pressable onPress={openSwap}>
-                <Text style={st.name}>
-                  {current.is_priority ? '⭐ ' : ''}{current.name} {current.sets.length === 0 && <Text style={st.swap}>{'⇄\u00A0trocar'}</Text>}
-                </Text>
-              </Pressable>
-              <Muted style={{ marginTop: -6 }}>
-                {range(planned.min, planned.max)} × {range(current.reps_min, current.reps_max)} · descanso {formatClock(current.rest_sec)}
-                {outlook ? ` · feito ${outlook.timesDone}×` : ''}
-                {!current.slot_id ? ' · extra' : ''}
-              </Muted>
-              {outlook && (
-                <View style={st.last}>
-                  <Text style={st.lastText}>
-                    {outlook.last ? <>último ({dayMonth(new Date(outlook.last.date))}): <Text style={st.lastStrong}>{describeSets(outlook.last.sets)}</Text></> : current.initial_load != null ? <>primeira vez · carga inicial <Text style={st.lastStrong}>{formatLoad(current.initial_load)} kg</Text></> : 'primeira vez com este exercício'}
-                  </Text>
+              {/* ---------- entre exercícios ---------- */}
+              {savedSet && finished && (
+                <View style={st.doneCard}>
+                  <View style={st.doneCheck}><Text style={st.statusText}>✓</Text></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.doneName} numberOfLines={1}>{finished.name}</Text>
+                    <Muted style={{ fontSize: 12 }}>{describeSets(finished.sets)}</Muted>
+                  </View>
+                  <LinkText onPress={editSaved}>editar</LinkText>
                 </View>
               )}
-              <LinkText muted={showMove} onPress={() => setShowMove((v) => !v)}>{showMove ? 'esconder movimento' : '▶ ver movimento'}</LinkText>
-              {showMove && <MovementAnimation name={current.name} muscle={current.muscle_group} builtinKey={current.builtin_key} compact />}
-              {outlook?.prefill.increased && done === 0 && (
-                <Text style={[st.chip, { color: colors.green, backgroundColor: colors.greenBg }]}>⬆ subir carga · bateu {current.reps_max} em tudo</Text>
+              {isRest && <RestBar elapsedSec={restElapsed} target={restTarget} over={over} onNudge={doNudge} />}
+
+              <Label>a seguir</Label>
+              <View style={st.nextCard}>
+                <Text style={st.name}>{current.is_priority ? '⭐ ' : ''}{current.name}</Text>
+                {meta}
+                {lastLine}
+                {nextSetLine}
+                {hints}
+                {actions}
+              </View>
+
+              {queue.length > 0 && (
+                <>
+                  <Label>ou escolha outro</Label>
+                  <View style={{ gap: 6 }}>
+                    {queue.map((e) => <QueueRow key={e.id} we={e} onPress={() => goTo(e)} />)}
+                  </View>
+                </>
               )}
-              {outlook?.stalled && !outlook.prefill.increased && done === 0 && (
-                <Text style={[st.chip, { color: colors.yellow, backgroundColor: colors.yellowBg }]}>3 treinos sem progresso · tente +1 rep ou +1 passo</Text>
-              )}
-              {current.note ? <Muted style={{ fontSize: 12 }}>obs.: {current.note}</Muted> : null}
+            </>
+          ) : (
+            <>
+              {/* ---------- exercício em andamento ---------- */}
+              <Text style={st.name}>{current.is_priority ? '⭐ ' : ''}{current.name}</Text>
+              <View style={{ marginTop: -6 }}>{meta}</View>
+              {lastLine}
+              {actions}
+              {hints}
 
               <Dots done={done} min={planned.min} max={planned.max} label={isRest ? 'descansando' : outcome === 'completo' ? 'completo' : `série ${done + 1} de ${planned.min === planned.max ? planned.min : `${planned.min}–${planned.max}`}${done >= planned.min ? ' (opcional)' : ''}`} />
 
               {isRest ? (
                 <>
                   <RestRing elapsedSec={restElapsed} target={restTarget} over={over} />
+                  <View style={st.nudgeRow}>
+                    <NudgeButton title="−15s" onPress={() => doNudge(-15)} />
+                    <NudgeButton title="+15s" onPress={() => doNudge(15)} />
+                  </View>
                   {savedSet && (
                     <View style={st.saved}>
                       <Muted>{sameExercise ? `série ${savedSet.idx + 1}` : `acabou ${savedSet.name}`}</Muted>
                       <Text style={st.savedVal}>{savedSet.load ? `${formatLoad(savedSet.load)} kg ` : ''}× {savedSet.reps}</Text>
-                      <LinkText
-                        onPress={() => {
-                          setSetEdit({ load: savedSet.load, reps: savedSet.reps });
-                          setSheet({ set: savedSet, step: exercises.find((e) => e.id === savedSet.weId)?.step_kg ?? current.step_kg });
-                        }}
-                      >
-                        editar
-                      </LinkText>
+                      <LinkText onPress={editSaved}>editar</LinkText>
                     </View>
                   )}
-                  <View style={st.last}>
-                    <Text style={st.lastText}>
-                      série {done + 1} vai com <Text style={st.lastStrong}>{nextLoad ? `${formatLoad(nextLoad)} kg × ${nextReps}` : `${nextReps} reps`}</Text> · ajuste ao iniciar
-                    </Text>
-                  </View>
+                  {nextSetLine}
                 </>
               ) : (
                 <>
@@ -443,6 +509,15 @@ export default function Treino() {
                   {outcome === 'completo' ? 'exercício completo · ir para o próximo' : 'pular série opcional e ir para o próximo'}
                 </LinkText>
               )}
+
+              {queue.length > 0 && workout.phase !== 'serie' && (
+                <View style={{ gap: 6, marginTop: 4 }}>
+                  <Label>a seguir</Label>
+                  {queue.slice(0, 3).map((e) => <QueueRow key={e.id} we={e} onPress={() => goTo(e)} />)}
+                  {queue.length > 3 && <LinkText onPress={() => setSheet('lista')}>ver todos ({total})</LinkText>}
+                </View>
+              )}
+              {queue.length > 0 && workout.phase === 'serie' && <Muted style={{ fontSize: 12 }}>depois: {queue[0].name}</Muted>}
             </>
           )}
         </ScrollView>
@@ -463,10 +538,6 @@ export default function Treino() {
         ) : (
           <BigButton title="Finalizar treino" onPress={finish} />
         )}
-        <Pressable onPress={() => setSheet('lista')} style={st.handle} hitSlop={8}>
-          <View style={st.handleBar} />
-          <Text style={st.handleText}>{workout.routine_code ?? 'treino'} · {position} de {total} · ver lista</Text>
-        </Pressable>
       </View>
 
       {/* lista do treino */}
@@ -659,6 +730,62 @@ function SetClock({ sec }: { sec: number }) {
   );
 }
 
+/** Botão de ação do exercício (trocar, ver movimento): grande o bastante para o dedo no meio do treino. */
+function ActionButton({ icon, title, onPress, active, dim }: { icon: string; title: string; onPress: () => void; active?: boolean; dim?: boolean }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [st.action, active && st.actionActive, (pressed || dim) && { opacity: dim ? 0.45 : 0.8 }]}
+    >
+      <Text style={st.actionIcon}>{icon}</Text>
+      <Text style={st.actionText} numberOfLines={1}>{title}</Text>
+    </Pressable>
+  );
+}
+
+function NudgeButton({ title, onPress }: { title: string; onPress: () => void }) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={`${title.startsWith('−') ? 'Menos' : 'Mais'} 15 segundos de descanso`} onPress={onPress} style={({ pressed }) => [st.nudge, pressed && { opacity: 0.8 }]}>
+      <Text style={st.nudgeText}>{title}</Text>
+    </Pressable>
+  );
+}
+
+/** Um exercício da fila: toque para ir para ele. */
+function QueueRow({ we, onPress }: { we: WorkoutExerciseRow; onPress: () => void }) {
+  const p = plannedSets(we.sets_min, we.sets_max, we.sets_adjust);
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => [st.queue, pressed && { backgroundColor: colors.card2 }]}>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={st.queueName} numberOfLines={1}>{we.is_priority ? '⭐ ' : ''}{!we.slot_id ? '+ ' : ''}{we.name}</Text>
+        <Muted style={{ fontSize: 12 }}>{we.sets.length > 0 ? `${we.sets.length} de ${p.min} feitas` : `${range(p.min, p.max)} × ${range(we.reps_min, we.reps_max)}`}</Muted>
+      </View>
+      <Text style={st.queueGo}>ir ›</Text>
+    </Pressable>
+  );
+}
+
+/** Descanso compacto da tela entre exercícios: barra, tempo e −15s / +15s. */
+function RestBar({ elapsedSec, target, over, onNudge }: { elapsedSec: number; target: number; over: boolean; onNudge: (delta: number) => void }) {
+  const p = target > 0 ? Math.min(1, elapsedSec / target) : 0;
+  return (
+    <View style={st.restBar}>
+      <View style={{ flex: 1, gap: 6 }}>
+        <Text style={st.restBarLabel}>
+          descanso <Text style={[st.restBarVal, over && { color: colors.orange }]}>{formatClock(elapsedSec)}</Text>
+          <Text style={st.restBarOf}> de {formatClock(target)}</Text>
+        </Text>
+        <View style={st.restTrack}>
+          <View style={[st.restFill, { width: `${p * 100}%`, backgroundColor: over ? colors.orange : colors.acaiLight }]} />
+        </View>
+      </View>
+      <NudgeButton title="−15s" onPress={() => onNudge(-15)} />
+      <NudgeButton title="+15s" onPress={() => onNudge(15)} />
+    </View>
+  );
+}
+
 function RestRing({ elapsedSec, target, over }: { elapsedSec: number; target: number; over: boolean }) {
   const r = 44;
   const c = 2 * Math.PI * r;
@@ -681,14 +808,32 @@ function RestRing({ elapsedSec, target, over }: { elapsedSec: number; target: nu
 const st = StyleSheet.create({
   wrap: { flex: 1, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8, gap: 10 },
   top: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  nextTop: { flex: 1, fontFamily: fonts.text, fontSize: 12, color: colors.text2 },
-  nextName: { fontFamily: fonts.textSemi, color: colors.text },
-  clock: { fontFamily: fonts.num, fontSize: 14, color: colors.text, fontVariant: ['tabular-nums'] },
-  menuBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.acaiBg, borderColor: colors.acai, borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
-  menuDots: { color: colors.lilac, fontSize: 18, lineHeight: 18 },
-  menuText: { fontFamily: fonts.textSemi, color: colors.lilac, fontSize: 13 },
+  clock: { flex: 1, textAlign: 'center', fontFamily: fonts.num, fontSize: 14, color: colors.text, fontVariant: ['tabular-nums'] },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: colors.acaiBg, borderColor: colors.acai, borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, minHeight: 42 },
+  pillIcon: { color: colors.lilac, fontSize: 18, lineHeight: 20 },
+  pillText: { fontFamily: fonts.textSemi, color: colors.lilac, fontSize: 14 },
+  actions: { flexDirection: 'row', gap: 8 },
+  action: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 48, borderRadius: radius.md, backgroundColor: colors.card, borderColor: colors.line, borderWidth: 1, paddingHorizontal: 10 },
+  actionActive: { backgroundColor: colors.acaiBg, borderColor: colors.acai },
+  actionIcon: { color: colors.lilac, fontSize: 15 },
+  actionText: { fontFamily: fonts.textSemi, fontSize: 14, color: colors.lilac },
+  nudgeRow: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginTop: -4 },
+  nudge: { minWidth: 72, minHeight: 44, borderRadius: 999, backgroundColor: colors.card2, borderColor: colors.line, borderWidth: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 },
+  nudgeText: { fontFamily: fonts.num, fontSize: 15, color: colors.text, fontVariant: ['tabular-nums'] },
+  queue: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 56, paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.md, backgroundColor: colors.card, borderColor: colors.line, borderWidth: 1 },
+  queueName: { fontFamily: fonts.textSemi, fontSize: 15, color: colors.text },
+  queueGo: { fontFamily: fonts.textSemi, fontSize: 14, color: colors.lilac },
+  doneCard: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },
+  doneCheck: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.acai, alignItems: 'center', justifyContent: 'center' },
+  doneName: { fontFamily: fonts.textSemi, fontSize: 14, color: colors.text },
+  restBar: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.card, borderRadius: radius.lg, paddingHorizontal: 14, paddingVertical: 12 },
+  restBarLabel: { fontFamily: fonts.text, fontSize: 13, color: colors.text2 },
+  restBarVal: { fontFamily: fonts.num, fontSize: 22, color: colors.text, fontVariant: ['tabular-nums'] },
+  restBarOf: { fontFamily: fonts.text, fontSize: 13, color: colors.grey },
+  restTrack: { height: 6, borderRadius: 3, backgroundColor: colors.line, overflow: 'hidden' },
+  restFill: { height: 6, borderRadius: 3 },
+  nextCard: { gap: 10, backgroundColor: colors.card, borderColor: colors.acai, borderWidth: 1, borderRadius: radius.lg, padding: 14, marginTop: -4 },
   name: { fontFamily: fonts.num, fontSize: 28, letterSpacing: -0.8, color: colors.text },
-  swap: { fontFamily: fonts.textSemi, fontSize: 13, color: colors.lilac },
   last: { backgroundColor: colors.card, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
   lastText: { fontFamily: fonts.text, fontSize: 13, color: colors.text2 },
   lastStrong: { fontFamily: fonts.num, color: colors.text },
@@ -715,9 +860,6 @@ const st = StyleSheet.create({
   ringOf: { fontFamily: fonts.text, fontSize: 13, color: colors.grey },
   saved: { flexDirection: 'row', alignItems: 'center', gap: 10, justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.line, paddingVertical: 8 },
   savedVal: { flex: 1, textAlign: 'right', fontFamily: fonts.num, fontSize: 16, color: colors.text },
-  handle: { alignItems: 'center', gap: 4, paddingTop: 2 },
-  handleBar: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.line },
-  handleText: { fontFamily: fonts.textSemi, fontSize: 12, color: colors.text2 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 8, borderRadius: 10 },
   rowCur: { backgroundColor: colors.acaiBg },
   rowName: { flex: 1, fontFamily: fonts.textSemi, fontSize: 14, color: colors.text },

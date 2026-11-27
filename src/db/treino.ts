@@ -9,7 +9,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { Prefill } from '../domain/progression.ts';
-import { afterSet, nextPending, plannedSets, restBetween, valuesForSet } from '../domain/session.ts';
+import { afterSet, nextPending, nudgeRest, plannedSets, restBetween, valuesForSet } from '../domain/session.ts';
 import type { SetResult, SlotTarget } from '../domain/types.ts';
 import { nowIso } from './index.ts';
 import {
@@ -184,4 +184,19 @@ export async function changeRest(db: Db, data: WorkoutData, we: WorkoutExerciseR
   await setPhase(db, workout.id, { phase: 'descanso', phase_started_at: workout.phase_started_at, rest_target_sec: seconds });
   const elapsed = workout.phase_started_at ? Math.floor((Date.now() - new Date(workout.phase_started_at).getTime()) / 1000) : 0;
   return seconds - elapsed;
+}
+
+/**
+ * −15s / +15s embaixo do relógio: muda só o descanso que está correndo (não o do exercício).
+ * Devolve o alvo novo e os segundos que faltam (para reagendar o aviso), ou null fora do descanso.
+ */
+export async function nudgeRunningRest(db: Db, data: WorkoutData, delta: number): Promise<{ target: number; left: number } | null> {
+  const { workout } = data;
+  if (workout.phase !== 'descanso' || !(await unchanged(db, workout))) return null;
+  // parte do alvo gravado (não do que a tela via): dois toques rápidos somam os dois
+  const row = await db.getFirstAsync<{ rest_target_sec: number | null }>(`SELECT rest_target_sec FROM workout WHERE id = ?`, workout.id);
+  const target = nudgeRest(row?.rest_target_sec ?? 0, delta);
+  await setPhase(db, workout.id, { phase: 'descanso', phase_started_at: workout.phase_started_at, rest_target_sec: target });
+  const elapsed = workout.phase_started_at ? Math.floor((Date.now() - new Date(workout.phase_started_at).getTime()) / 1000) : 0;
+  return { target, left: target - elapsed };
 }

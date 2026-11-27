@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { afterSet, describeSets, nextPending, plannedSets, restBetween, roundRest, thousands, valuesForSet, workoutTotals } from './session.ts';
+import { afterSet, describeSets, nextPending, nudgeRest, plannedSets, upcoming, restBetween, roundRest, thousands, valuesForSet, workoutTotals } from './session.ts';
 
 describe('treino em andamento', () => {
   test('séries planejadas com ajuste do ⋯', () => {
@@ -53,5 +53,25 @@ describe('treino em andamento', () => {
     assert.equal(describeSets([{ load: 22.5, reps: 9 }, { load: 20, reps: 8 }]), '22,5×9, 20×8');
     assert.equal(thousands(8450), '8.450');
     assert.equal(roundRest(161), 165);
+  });
+
+  test('fila "a seguir": pendentes depois do atual, voltando ao começo', () => {
+    const items = [
+      { id: 'a', status: 'feito' as const },
+      { id: 'b', status: 'pendente' as const },
+      { id: 'c', status: 'pulado' as const },
+      { id: 'd', status: 'pendente' as const },
+      { id: 'e', status: 'pendente' as const },
+    ];
+    assert.deepEqual(upcoming(items, 'd').map((i) => i.id), ['e', 'b']);
+    assert.deepEqual(upcoming(items, 'b', 1).map((i) => i.id), ['d']);
+    assert.deepEqual(upcoming(items, null).map((i) => i.id), ['b', 'd', 'e']);
+    assert.deepEqual(upcoming([{ id: 'x', status: 'pendente' as const }], 'x'), []);
+  });
+
+  test('−15s / +15s no descanso', () => {
+    assert.equal(nudgeRest(60, 15), 75);
+    assert.equal(nudgeRest(20, -15), 15);
+    assert.equal(nudgeRest(600, 15), 600);
   });
 });
