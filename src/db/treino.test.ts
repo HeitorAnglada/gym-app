@@ -16,7 +16,7 @@ import { exportBackup, importBackup, initDatabase } from './index.ts';
 import { MIGRATIONS, SCHEMA_VERSION } from './schema.ts';
 import { activateProgram, getNextRoutine, listExercises, listPrograms, listRoutines, listWorkouts } from './queries.ts';
 import {
-  addSet, changeRest, currentExercise, endSet, goToExercise, moveOn, nextValues, removeSet, setNext, startSet, toggleSkip,
+  addSet, changeRest, currentExercise, endSet, goToExercise, moveOn, nextValues, nudgeRunningRest, removeSet, setNext, startSet, toggleSkip,
 } from './treino.ts';
 import {
   addExtra, autoFinishStale, deleteSet, exerciseOutlook, exerciseSessions, finishWorkout, getOpenWorkout, loadWorkout, startWorkout,
@@ -358,6 +358,26 @@ describe('treino do começo ao fim', () => {
     const after = await load(wid);
     assert.equal(after.workout.rest_target_sec, 180);
     assert.equal(after.exercises[0].rest_sec, 180);
+  });
+
+  test('−15s / +15s muda só o descanso que está correndo', async () => {
+    const wid = await startWorkout(db, await routineId('A1'), false);
+    await doSet(wid, { restSec: 30 });
+    let d = await load(wid);
+    const target = d.workout.rest_target_sec!;
+    const restOfExercise = currentExercise(d)!.rest_sec;
+    const r = await nudgeRunningRest(db, d, 15);
+    assert.deepEqual(r, { target: target + 15, left: target + 15 - 30 });
+    d = await load(wid);
+    assert.equal(d.workout.rest_target_sec, target + 15);
+    assert.equal(currentExercise(d)!.rest_sec, restOfExercise, 'o descanso do exercício não muda');
+    // dois toques com a mesma tela: os dois contam
+    await nudgeRunningRest(db, d, 15);
+    await nudgeRunningRest(db, d, 15);
+    assert.equal((await load(wid)).workout.rest_target_sec, target + 45);
+    // fora do descanso não faz nada
+    await startSet(db, await load(wid));
+    assert.equal(await nudgeRunningRest(db, await load(wid), 15), null);
   });
 
   test('trocar pelo substituto usa a carga e o histórico dele', async () => {

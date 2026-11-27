@@ -35,6 +35,25 @@ export function nextPending<T extends { id: string; status: ExerciseStatus }>(it
 }
 
 /**
+ * Os próximos pendentes depois do atual, na ordem da ficha (voltando ao começo), sem o atual.
+ * É a fila "a seguir" do descanso e a lista da tela entre exercícios.
+ */
+export function upcoming<T extends { id: string; status: ExerciseStatus }>(items: T[], currentId: string | null, limit = Infinity): T[] {
+  const start = currentId ? items.findIndex((i) => i.id === currentId) : -1;
+  const out: T[] = [];
+  for (let k = 1; k <= items.length && out.length < limit; k++) {
+    const it = items[(start + k + items.length) % items.length];
+    if (it.status === 'pendente' && it.id !== currentId) out.push(it);
+  }
+  return out;
+}
+
+/** Alvo do descanso depois do −15s / +15s: nunca abaixo de 15 s nem acima de 10 min. */
+export function nudgeRest(target: number, delta: number): number {
+  return Math.min(600, Math.max(15, target + delta));
+}
+
+/**
  * Carga e reps que aparecem para a série `index` (0 = primeira).
  * A carga segue a última série feita hoje (se você mudou, continua com a nova);
  * as reps vêm do último treino deste exercício.
